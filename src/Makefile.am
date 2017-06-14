@@ -1,2 +1,2 @@
 bin_PROGRAMS = osclt
-osclt_SOURCES = main.c options.c options.h
+osclt_SOURCES = main.c config.c config.h
