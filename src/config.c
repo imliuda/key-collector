@@ -3,18 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include "config.h"
-
-char * strtrim(char *s) {
-    char *p = s;
-    char *q = s;
-    while (*p==' ' || *p=='\t') ++p;
-    while (*q++=*p++)
-        ;
-    q -= 2;
-    while (*q==' ' || *q=='\t') --q;
-    *(q+1) ='\0';
-    return s;
-}
+#include "str.h"
 
 void config_init(const char *file) {
     size_t nread, len;
@@ -39,8 +28,8 @@ void config_init(const char *file) {
             name = strsep(&value, "=");
             if (value != NULL) {
                 cfg_item *item = malloc(sizeof(cfg_item));
-                item->name = strdup(strtrim(name));
-                item->value = strdup(strtrim(value));
+                item->name = strdup(strtrim(name, " \t"));
+                item->value = strdup(strtrim(value, " \t"));
                 item->next = config;
                 config = item;
             }
