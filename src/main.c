@@ -38,14 +38,15 @@ int main(int argc, char **argv) {
 
     config_init(config_file);
 
-    task_list = malloc(sizeof(clt_task));
-    task_list->cmd = "/tmp/test.sh";
-    task_list->interval = 5;
-    task_list->result = NULL;
-    task_list->reslen = 0;
-    task_list->next = NULL;
+    clt_task *task = malloc(sizeof(clt_task));
+    task->cmd = "/tmp/test.sh";
+    task->interval = 5;
+    task->timeout = 1;
+    task->result = NULL;
+    task->reslen = 0;
+    task->next = NULL;
     struct ev_loop *loop = ev_default_loop(0);
-    schedule(loop, task_list);
+    schedule(loop, task);
     ev_run(loop, 0);
     return 0;
 }
