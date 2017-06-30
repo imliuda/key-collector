@@ -4,8 +4,7 @@
 #include <ev.h>
 #include "config.h"
 #include "schedule.h"
-
-static char *config_file = NULL;
+#include "log.h"
 
 const char *argp_program_version = "osclt v1.0";
 const char *argp_program_bug_address = "<imliuda@163.com>";
@@ -32,11 +31,11 @@ static struct argp argp = {options, parse_option, argp_args, argp_doc};
 int main(int argc, char **argv) {
     argp_parse(&argp, argc, argv, 0, 0, 0);
     if (!config_file) {
-        printf("You must provide a config file with -c option\n");
-        exit(EXIT_FAILURE);
+        config_file = "/etc/osclt/osclt.conf";
     }
 
-    config_init(config_file);
+    config_init();
+    log_init();
 
     clt_task *task = malloc(sizeof(clt_task));
     task->cmd = "/tmp/test.sh";

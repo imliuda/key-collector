@@ -5,15 +5,17 @@
 #include "config.h"
 #include "str.h"
 
-void config_init(const char *file) {
+char *config_file = NULL;
+
+void config_init() {
     size_t nread, len;
     char *line, *name, *value;
 
-    FILE *fp = fopen(file, "r");
+    FILE *fp = fopen(config_file, "r");
 
     if (fp == NULL) {
-        perror("open config file error");
-        exit(EXIT_FAILURE);
+        printf("failed to open config file: %s\n", config_file);
+        exit(1);
     }
 
     do {

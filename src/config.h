@@ -10,10 +10,11 @@ struct cfg_item {
     cfg_item *next;
 };
 
+extern char *config_file;
 static struct cfg_item *config = NULL;
 
 /* parse config file to list */
-void config_init(const char *file);
+void config_init();
 
 /* load config by name */
 long int config_get_long(const char *name, long int def);
