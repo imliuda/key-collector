@@ -1,24 +1,18 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
-#include <stdbool.h>
+#include <jansson.h>
 
-typedef struct cfg_item cfg_item;
-struct cfg_item {
-    char    *name;
-    void    *value;
-    cfg_item *next;
+typedef struct _config_plugin config_plugin;
+struct _config_plugin {
+    char            *name;
+    void            (*load)(const char *param);
+    config_plugin   *next;
 };
 
-extern char *config_file;
-static struct cfg_item *config = NULL;
+extern config_plugin *config_list;
+extern json_t *config;
 
-/* parse config file to list */
-void config_init();
-
-/* load config by name */
-long int config_get_long(const char *name, long int def);
-bool config_get_bool(const char *name, bool def);
-char *config_get_string(const char *name, char *def);
+void config_register(const char *name, void (*load)(const char *param));
 
 #endif
