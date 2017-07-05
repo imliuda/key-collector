@@ -9,22 +9,42 @@
 #include "config.h"
 
 osclt_task *task_list = NULL;
-
+/*
+*/
 void schedule_load(osclt_task **task_list) {
-    json_t *jtask = json_object_get(config, "schedule");
-    char *key;
-    json_t *value;
-    json_object_foreach(jtask, key, value) {
-        printf("%s\n", key);
+    json_t *tasks = json_object_get(config, "schedule");
+    if (tasks == NULL) {
+        printf("there are no scheduled tasks\n");
+    }
+    void *iter = json_object_iter(tasks);
+    const char *key;
+    json_t *value, *prop;
+
+    while (iter != NULL) {
+        key = json_object_iter_key(iter);
+        value = json_object_iter_value(iter);
+
         osclt_task *task = malloc(sizeof(osclt_task));
-        task->exec = "/tmp/test.sh";
-        task->interval = 5;
-        task->timeout = 1;
+
+        if ((prop = json_object_get(value, "exec")) != NULL) {
+            task->exec = strdup(json_string_value(prop));
+        }
+        if ((prop = json_object_get(value, "period")) != NULL) {
+            task->interval = json_integer_value(prop);
+        }
+        if ((prop = json_object_get(value, "timeout")) != NULL) {
+            task->interval = json_integer_value(prop);
+        }
+        if ((prop = json_object_get(value, "log")) != NULL) {
+            task->log = strdup(json_string_value(prop));
+        }
         task->result = NULL;
         task->reslen = 0;
-        task->log = strdup("once");
         task->next = *task_list;
         *task_list = task;
+
+        printf("%s\n", key);
+        iter = json_object_iter_next(tasks, iter);
     }
 }
 
