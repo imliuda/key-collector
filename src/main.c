@@ -35,16 +35,10 @@ int main(int argc, char **argv) {
 
     cname = strsep(&cparam, ":");
     config_load(cname, cparam);
+    schedule_load(&task_list);
 
-    clt_task *task = malloc(sizeof(clt_task));
-    task->cmd = "/tmp/test.sh";
-    task->interval = 5;
-    task->timeout = 1;
-    task->result = NULL;
-    task->reslen = 0;
-    task->next = NULL;
     struct ev_loop *loop = ev_default_loop(0);
-    schedule(loop, task);
+    schedule_start(loop, task_list);
     ev_run(loop, 0);
     return 0;
 }

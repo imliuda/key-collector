@@ -3,8 +3,8 @@
 
 #include <ev.h>
 
-typedef struct _clt_task clt_task;
-struct _clt_task {
+typedef struct _osclt_task osclt_task;
+struct _osclt_task {
     ev_timer    w_prd;
     ev_io       w_io;
     ev_child    w_chld;
@@ -12,13 +12,16 @@ struct _clt_task {
     int         interval;
     int         timeout;
     char        *key;
-    char        *cmd;
+    char        *exec;
+    char        *log;
     char        **argv;
     char        *result;
     size_t      reslen;
-    clt_task    *next;
+    osclt_task  *next;
 };
 
-void schedule(struct ev_loop *loop, clt_task *task_list);
+extern osclt_task *task_list;
+void schedule_load(osclt_task **task_list);
+void schedule_start(struct ev_loop *loop, osclt_task *task_list);
 
 #endif
