@@ -9,5 +9,6 @@ AC_CHECK_LIB(jansson, json_dumps, , AC_MSG_FAILURE("can't find library libjansso
 AC_CONFIG_FILES([
   Makefile
   src/Makefile
+  test/Makefile
 ])
 AC_OUTPUT
