@@ -1,36 +1,27 @@
 #ifndef __OSCLT_LIST_H__
 #define __OSCLT_LIST_H__
 
-typedef struct list list;
-typedef struct list_node list_node;
+typedef struct oc_list oc_list;
 
-struct list_node {
-    void        *value;
-    list_node   *prev;
-    list_node   *next;
+struct oc_list {
+    void    *data;
+    oc_list *prev;
+    oc_list *next;
 };
 
-struct list {
-    list_node   *head;
-};
-
-list *list_new();
-void list_prepend(list *head, list_node *node);
-void list_append(list *head, list_node *node);
-void list_insert_before(list_node *cur, list_node *node);
-void list_insert_after(list_node *cur, list_node *node);
-void list_delete(list *head, list *node);
-list_node *list_first(list *head);
-list_node *list_last(list *head);
-list_node *list_prev(list_node *node);
-list_node *list_next(list_node *node);
-void list_extend(list *head1, list *head2);
-size_t list_length(list *head);
-void list_sort(list *head, int (*compare)(list_node *node1, list_node *node2));
-void list_foreach(list *head, void (*foreach)(list_node *node));
-void list_free(list *head);
-list_node *list_node_new(void *value);
-void list_node_free(list_node *node);
-void *list_node_value(list_node *node);
+oc_list *oc_list_new();
+void oc_list_prepend(oc_list *list, oc_list *node);
+void oc_list_append(oc_list *list, oc_list *node);
+void oc_list_insert_before(oc_list *cur, oc_list *node);
+void oc_list_insert_after(oc_list *cur, oc_list *node);
+void oc_list_remove(oc_list *list, oc_list *node);
+oc_list *oc_list_first(oc_list *list);
+oc_list *oc_list_last(oc_list *list);
+oc_list *oc_list_prev(oc_list *list, oc_list *node);
+oc_list *oc_list_next(oc_list *list, oc_list *node);
+size_t oc_list_length(oc_list *list);
+void oc_list_sort(oc_list *list, int (*compare)(oc_list *node1, oc_list *node2));
+void oc_list_foreach(oc_list *list, void (*foreach)(oc_list *node, void *data), void *data);
+void oc_list_free(oc_list *list);
 
 #endif
