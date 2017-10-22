@@ -1,18 +1,18 @@
-#ifndef __CONFIG_H__
-#define __CONFIG_H__
+#ifndef __OSCLT_CONFIG_H__
+#define __OSCLT_CONFIG_H__
 
-#include <jansson.h>
+#include "utils/list.h"
 
-typedef struct _config_plugin config_plugin;
-struct _config_plugin {
-    char            *name;
-    void            (*load)(const char *param);
-    config_plugin   *next;
+typedef enum cp_state cp_state;
+
+enum cp_state {
+    CP_NONE,
+    CP_COMMENT,
+    CP_SECTION,
+    CP_KEY,
+    CP_VALUE
 };
 
-extern config_plugin *config_list;
-extern json_t *config;
-
-void config_register(const char *name, void (*load)(const char *param));
+void config_load(const char *path);
 
 #endif

@@ -2,31 +2,101 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
+#include <ctype.h>
+
 #include "config.h"
-#include "utils/str.h"
+#include "utils/list.h"
 
-config_plugin *config_list = NULL;
-json_t *config = NULL;
+static oc_list *oc_config = NULL;
 
-void config_register(const char *name, void (*load)(const char *param)) {
-    config_plugin *plugin = malloc(sizeof(config_plugin));
-    plugin->name = strdup(name);
-    plugin->load = load;
-    plugin->next = config_list;
-    config_list = plugin;
+static void config_error(char buf[], int index, char *msg) {
+    int line_num = 1;
+    int char_num = 1;
+    for (int i = 0; i != index; i++) {
+        if (buf[i] == '\n') {
+            line_num++;
+            char_num = 1;
+        } else {
+            char_num++;
+        }
+    }
+    printf("config error at line %d, character %d: %s\n", line_num, char_num, msg);
 }
 
-void config_load(const char *name, const char *param) {
-    config_plugin *plugin = config_list;
-    while (plugin != NULL) {
-        if (strcmp(plugin->name, name) == 0) {
-            plugin->load(param);
-            break;
+static char *config_string(char *str, char c) {
+    if (str == NULL) {
+        str = malloc(64);
+        str[0] = c;
+        str[1] = '\0';
+    } else {
+        int len = strlen(str);
+        if ((len + 1) % 64 == 0) {
+            str = realloc(str, len + 1 + 64);
         }
-        plugin = plugin->next;
+        str[len] = c;
+        str[len + 1] = '\0';
+    }
+    return str;
+}
+
+void config_load(const char *path) {
+    FILE *fp = fopen(path, "r");
+
+    if (fp == NULL) {
+        fprintf(stderr, "open config file %s failed: %s\n", path, strerror(errno));
+        exit(1);
     }
 
-    if (plugin == NULL) {
-        printf("failed to load config plugin: %s, no such plugin\n", name);
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    rewind(fp);
+    char *buf = malloc(fsize);
+    fread(buf, fsize, 1, fp);
+    fclose(fp);
+
+    cp_state s = CP_NONE;
+    char *conmment = config_string(NULL, '\0');
+    char *key = config_string(NULL, '\0');
+    char *section = config_string(NULL, '\0');
+    char *value = config_string(NULL, '\0');
+    char error[512];
+
+    for (int i=0; i<fsize; i++) {
+        if (s == CP_NONE) {
+            if (isspace(buf[i])) {
+                continue;
+            } else if (buf[i] == '#') {
+                s == CP_COMMENT;
+            } else if (buf[i] == '[') {
+            } else if (buf[i] == '.') {
+                if (strlen(key) == 0) {
+                    snprintf(error, 512,  "key's first character can't be \".\".");
+                    config_error(buf, i, error);
+                } else {
+                    s = CP_KEY;
+                    config_string(key, buf[i]);
+                }
+            }
+        } else if (s == CP_COMMENT) {
+            if (buf[i] == '\n') {
+                s = CP_NONE;
+            }
+        } else if (s == CP_SECTION) {
+            
+        } else if (s == CP_KEY) {
+            if (buf[i] == '=') {
+                /* get a key */
+                printf("key: %s\n", key);
+                s = CP_VALUE;
+            }
+        } else if (s == CP_VALUE) {
+            if (buf[i] == '\n') {
+                printf("value: %s\n", value);
+                s = CP_NONE;
+            } else {
+                value = config_string(value, buf[i]);
+            }
+        }
     }
 }
