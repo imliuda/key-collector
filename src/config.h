@@ -4,6 +4,7 @@
 #include "utils/list.h"
 
 typedef enum cp_state cp_state;
+typedef struct config_entry config_entry;
 
 enum cp_state {
     CP_NONE,
@@ -13,6 +14,13 @@ enum cp_state {
     CP_VALUE
 };
 
+struct config_entry {
+    char *section;
+    char *key;
+    char *value;
+};
+
+void config_dumps();
 void config_load(const char *path);
 
 #endif

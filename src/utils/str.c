@@ -1,48 +1,37 @@
+#include <ctype.h>
+
 #include "string.h"
 
-char *strltrim(char *str, const char *ws) {
-    char *p, *s = str;
-    const char *w;
-    for (p = str; *p != '\0'; p++) {
-        for (w = ws; *w != '\0'; w++) {
-            if (*p == *w) {
-                break;
-            }
-        }
-        // *p is the fist non empty char
-        if (*w == '\0') {
+char *strltrim(char *str) {
+    char *p = str;
+    char *s = str;
+    while (*p != '\0') {
+        if (!isspace(*p)) {
             while (*p != '\0') {
                 *s++ = *p++;
             }
             *s = '\0';
             break;
         }
+        p++;
     }
     return str;
 }
 
-char *strrtrim(char *str, const char *ws) {
+char *strrtrim(char *str) {
     char *p = str;
-    const char *w;
     while (*p != '\0') p++;
-    p--;
-    while (p >= str) {
-        for (w = ws; *w != '\0'; w++) {
-            if (*p == *w) {
-                break;
-            }
-        }
-        if (*w == '\0') {
-            *(p + 1) = '\0';
+    while (--p >= str) {
+        if (!isspace(*p)) {
+            *++p = '\0';
             break;
         }
-        p--;
     };
     return str;
 }
 
-char *strtrim(char *str, const char *ws) {
-    strltrim(str, ws);
-    strrtrim(str, ws);
+char *strtrim(char *str) {
+    str = strltrim(str);
+    str = strrtrim(str);
     return str;
 }

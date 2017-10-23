@@ -13,7 +13,7 @@ oc_list *oc_list_new() {
     return list;
 }
 
-void list_prepend(oc_list *list, oc_list *node) {
+void oc_list_prepend(oc_list *list, oc_list *node) {
     list->next->prev = node;
     node->prev = list;
     node->next = list->next;
