@@ -8,6 +8,7 @@ struct list {
 };
 
 struct list *list_new();
+struct list *list_node(void *data);
 void list_prepend(struct list *list, struct list *node);
 void list_append(struct list *list, struct list *node);
 void list_insert_before(struct list *cur, struct list *node);
@@ -18,8 +19,8 @@ struct list *list_last(struct list *list);
 struct list *list_prev(struct list *list, struct list *node);
 struct list *list_next(struct list *list, struct list *node);
 size_t list_length(struct list *list);
-void list_sort(struct list *list, int (*compare)(struct list *node1, struct list *node2));
-void list_foreach(struct list *list, void (*foreach)(struct list *node, void *data), void *data);
+void list_sort(struct list *list, int (*compare)(void *data1, void *data2));
+void list_foreach(struct list *list, void (*foreach)(void *data, void *user_data), void *user_data);
 void list_destroy(struct list *list);
 
 #endif

@@ -103,7 +103,7 @@ void map_replace(struct map *map, void *key, void *data, void **orig_key, void *
  * before calling this function, must call map_has() to check if key
  * already exisits.
  */
-void map_delete(struct map *map, void *key) {
+void map_remove(struct map *map, void *key) {
     struct list *p = map->entries;
     struct map_entry *e;
     while (p = list_next(map->entries, p)) {
@@ -146,11 +146,14 @@ void map_get(struct map *map, void *key, void **data) {
 void map_keys(struct map *map, struct list **keys) {
     struct list *p = map->entries;
     struct map_entry *e;
-    *keys = malloc(sizeof(struct list));
+    *keys = list_new();
     while (p = list_next(map->entries, p)) {
         e = (struct map_entry *)(p->data);
-        list_append(map->entries, e->key);
+        struct list *node = malloc(sizeof(struct list));
+        node->data = e->key;
+        list_append(*keys, node);
     }
+    list_sort(*keys, map->keycmp);
 }
 
 /*
