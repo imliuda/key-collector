@@ -6,14 +6,14 @@
  *
  * @return NULL pointer
  */
-oc_list *oc_list_new() {
-    oc_list *list = malloc(sizeof(oc_list));
+struct list *list_new() {
+    struct list *list = malloc(sizeof(struct list));
     list->next = list;
     list->prev = list;
     return list;
 }
 
-void oc_list_prepend(oc_list *list, oc_list *node) {
+void list_prepend(struct list *list, struct list *node) {
     list->next->prev = node;
     node->prev = list;
     node->next = list->next;
@@ -26,7 +26,7 @@ void oc_list_prepend(oc_list *list, oc_list *node) {
  * @param list a pointer to a list.
  * @param node the new element.
  */
-void oc_list_append(oc_list *list, oc_list *node) {
+void list_append(struct list *list, struct list *node) {
     list->prev->next = node;
     node->prev = list->prev;
     node->next = list;
@@ -39,7 +39,7 @@ void oc_list_append(oc_list *list, oc_list *node) {
  * @param cur after this element.
  * @param node the new element.
  */
-void oc_list_insert_before(oc_list *cur, oc_list *node) {
+void list_insert_before(struct list *cur, struct list *node) {
     cur->prev->next = node;
     node->prev = cur->prev;
     node->next = cur;
@@ -52,7 +52,7 @@ void oc_list_insert_before(oc_list *cur, oc_list *node) {
  * @param cur after this element.
  * @param node the new element.
  */
-void oc_list_insert_after(oc_list *cur, oc_list *node) {
+void list_insert_after(struct list *cur, struct list *node) {
     cur->next->prev = node;
     node->next = cur->next;
     node->prev = cur;
@@ -65,8 +65,8 @@ void oc_list_insert_after(oc_list *cur, oc_list *node) {
  * @param list a pointer to a list
  * @param node node to be removed from the list
  */
-void oc_list_remove(oc_list *list, oc_list *node) {
-    oc_list *p = list->next;
+void list_remove(struct list *list, struct list *node) {
+    struct list *p = list->next;
     // if really need check?
     while (p != list) {
         if (p == node) {
@@ -82,7 +82,7 @@ void oc_list_remove(oc_list *list, oc_list *node) {
  * @param list a pointer to a list
  * @return the first element or NULL
  */
-oc_list *oc_list_first(oc_list *list) {
+struct list *list_first(struct list *list) {
     if (list->next == list) {
         return NULL;
     }
@@ -95,7 +95,7 @@ oc_list *oc_list_first(oc_list *list) {
  * @param list a pointer to a list
  * @return the last element or NULL
  */
-oc_list *oc_list_last(oc_list *list) {
+struct list *list_last(struct list *list) {
     if (list->prev == list) {
         return NULL;
     }
@@ -105,9 +105,9 @@ oc_list *oc_list_last(oc_list *list) {
 /**
  * return the next node of current node.
  *
- * @see oc_list_next
+ * @see list_next
  */
-oc_list *oc_list_prev(oc_list *list, oc_list *node) {
+struct list *list_prev(struct list *list, struct list *node) {
     if (node->prev == list) {
         return NULL;
     }
@@ -119,15 +119,15 @@ oc_list *oc_list_prev(oc_list *list, oc_list *node) {
  *
  * this function can be used to iterate a list:
  *
- * oc_list *p = list;
- * while (p = oc_list_next(list, p)) {
+ * list *p = list;
+ * while (p = list_next(list, p)) {
  *     // do something
  * }
  *
  * or use iterate a list reverse:
  *
- * oc_list *p = list;
- * while (p = oc_list_prev(list, p)) {
+ * list *p = list;
+ * while (p = list_prev(list, p)) {
  *     // do something
  * }
  *
@@ -136,16 +136,16 @@ oc_list *oc_list_prev(oc_list *list, oc_list *node) {
  * @return return the next node of current or NULL if current
  * node is the last.
  */
-oc_list *oc_list_next(oc_list *list, oc_list *node) {
+struct list *list_next(struct list *list, struct list *node) {
     if (node->next == list) {
         return NULL;
     }
     return node->next;
 }
 
-size_t oc_list_length(oc_list *list) {
+size_t list_length(struct list *list) {
     size_t len = 0;
-    oc_list *p = list->next;
+    struct list *p = list->next;
     while (p != list) {
     	len++;
         p = p->next;
@@ -153,19 +153,19 @@ size_t oc_list_length(oc_list *list) {
     return len;
 }
 
-void oc_list_sort(oc_list *list, int (*compare)(oc_list *node1, oc_list *node2)) {
+void list_sort(struct list *list, int (*compare)(struct list *node1, struct list *node2)) {
 
 }
 
-void oc_list_foreach(oc_list *list, void (*foreach)(oc_list *node, void *data), void *data) {
-    oc_list *p = list->next;
+void list_foreach(struct list *list, void (*foreach)(struct list *node, void *data), void *data) {
+    struct list *p = list->next;
     while (p != list) {
     	foreach(p, data);
     }
 }
 
-void oc_list_free(oc_list *list) {
-    oc_list *p = list->next;
+void list_destroy(struct list *list) {
+    struct list *p = list->next;
     while (p != list) {
     	free(p);
     }
