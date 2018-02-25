@@ -14,34 +14,52 @@ void print_map(struct map *map) {
     printf("map:\n");
     struct list *p = keys;
     while (p = list_next(keys, p)) {
-        int *value;
+        char *value;
         map_get(map, p->data, (void *)&value);
-        printf("    %s: %d\n", p->data, *value);
+        printf("    %s: %s, (%ld: %ld)\n", p->data, value, p->data, value);
     }
     printf("\n");
 }
 
+char *random_str(int max) {
+    int length = random() % 5 + 1;
+    char *s = malloc(sizeof(length + 1));
+    for (int i = 0; i < length; i++) {
+        s[i] = random() % 26 + 'a';
+    }
+    s[length] = '\0';
+    return s;
+}
+
 int main () {
-    char *key1 = "apple", *key2 = "orange", *key3 = "banana";
-    int value1 = 1, value2 = 2, value3 = 3;
+    char *orig_key, *orig_data, *data;
+    struct list *list = list_new();
     struct map *map = map_new(strkeycmp);
-    // map_add
-    map_add(map, key2, &value2);
-    map_add(map, key1, &value1);
-    map_add(map, key3, &value3);
-    // map_has
-    printf("has apple: %d, orange: %d, banana: %d, peach: %d\n",
-           map_has(map, "apple"), map_has(map, key2), map_has(map, key3), map_has(map, "peach"));
-    // keys, get
+
+    for (int i = 0; i < 10; i++) {
+        char *s = random_str(5);
+        list_append(list, list_node(s));
+        map_add(map, s, s);
+    }
     print_map(map);
-    // update, repalce, remove
-    char *orig_key;
-    int *orig_data;
-    int a1 = 7, a2 = 8;
-    map_remove(map, "apple");
-    map_update(map, "orange", &a1, (void **)&orig_data);
-    printf("update orange: %d\n", *orig_data);
-    map_replace(map, "banana", &a2, (void **)&orig_key, (void **)&orig_data);
-    printf("replace banana: %s, %d\n", orig_key, *orig_data);
+    char *s1 = "1", *s2 = "2";
+    map_update(map, list_first(list)->data, s1, (void **)&orig_data);
+    printf("updated %s, orig_data: %ld\n", list_first(list)->data, orig_data);
+    char *new_key = strdup(list_last(list)->data);
+    map_replace(map, new_key, s2, (void **)&orig_key, (void **)&orig_data);
+    printf("replaced %s, orig_key: %ld, orig_data: %ld\n", new_key, orig_key, orig_data);
+    printf("has %s: %d, has NOWAY: %d\n", list_first(list)->data, map_has(map, list_first(list)->data), map_has(map, "NOWAY"));
     print_map(map);
+    /*
+    // remove
+    printf("remove\n");
+    struct list *p = list;
+    for (int i = 0; i < 5; i++) {
+        p = list_next(list, p);
+        printf("remove: %s\n", p->data);
+        map_remove(map, p->data, &orig_key, &orig_data);
+    }
+    print_map(map);
+    */
+    // update, replace
 }
