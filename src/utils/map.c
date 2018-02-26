@@ -49,7 +49,9 @@ static struct map_entry *get_uncle(struct map_entry *entry) {
 }
 
 static struct map_entry *get_sibling(struct map_entry *entry) {
-    return entry == entry->parent->left ? entry->parent->right : entry->parent->left;
+    if (entry->parent) {
+        return entry == entry->parent->left ? entry->parent->right : entry->parent->left;
+    }
 }
 
 static void rotate_left(struct map *map, struct map_entry *entry) {
@@ -107,18 +109,20 @@ static void map_add_internal(struct map *map, struct map_entry *entry) {
                 if (entry == parent->right) {
                     // rotate parent
                     rotate_left(map, parent);
+                    parent = parent->parent;
                 }
                 // rotate grandparent.
-                rotate_right(map, grandparent);
-                entry->color = BLACK;
+                parent->color = BLACK;
                 grandparent->color = RED;
+                rotate_right(map, grandparent);
             } else {
                 if (entry == parent->left) {
                     rotate_right(map, parent);
+                    parent = parent->parent;
                 }
-                rotate_left(map, grandparent);
-                entry->color = BLACK;
+                parent->color = BLACK;
                 grandparent->color = RED;
+                rotate_left(map, grandparent);
             }
         }
     }
@@ -182,87 +186,114 @@ enum color color(struct map_entry *entry) {
     return BLACK;
 }
 
-static void map_remove_fixup(struct map *map, struct map_entry *entry) {
+/*
+ * @param entry  fix this entry when dblack is true
+ * @param dblack if true entry is double black
+ */
+static void map_remove_fixup(struct map *map, struct map_entry *entry, bool dblack) {
     struct map_entry *grandparent = get_grandparent(entry);
     struct map_entry *parent = get_parent(entry);
     struct map_entry *uncle = get_uncle(entry);
     struct map_entry *sibling = get_sibling(entry);
 
     if (parent == NULL) {
-        entry->color = BLACK;
+        entry->color = BLACK; // really nead?
         return;
     }
-    if (color(sibling) == RED) {
-        if (entry = parent->left) {
-            rotate_left(map, sibling);
-        } else {
-            rotate_right(map, sibling);
-        }
-        parent->color = RED;
-        sibling->color = BLACK;
-    }
-    if (color(parent) == BLACK && color(sibling) == BLACK &&
-        color(sibling->left) == BLACK && color(sibling->right) == BLACK) {
-        sibling->color = RED;
-        map_remove_fixup(map, parent);
-    } else if (parent->color == RED && sibling->color == BLACK &&
-               color(sibling->left) == BLACK && color(sibling->right) == BLACK) {
-        sibling->color = RED;
-        parent->color = BLACK;
-    } else {
-        if (sibling->color == BLACK) {
-            if (entry == parent->left && color(sibling->left) == RED &&
-                color(sibling->right) == BLACK) {
-                rotate_right(map, sibling);
+    if (dblack) {
+        if (parent->color == BLACK && sibling->color == BLACK) {
+            if (color(entry->left) == BLACK && color(entry->right) == BLACK) { // sibling without red children
                 sibling->color = RED;
-                sibling->left->color = BLACK;
-                sibling = sibling->left;
-            } else if (entry == parent->right && color(sibling->left) == BLACK &&
-                       color(sibling->right) == RED) {
-                rotate_left(map, sibling);
-                sibling->color = RED;
-                sibling->right->color = BLACK;
-                sibling = sibling->right;
+                map_remove_fixup(map, parent, true);
+            } else { // sibling has at least one red child
+                if (entry == parent->left) {
+                    if (color(sibling->left) == RED) {
+                        sibling->color = RED;
+                        sibling->parent->color = BLACK;
+                        rotate_right(map, sibling);
+                        sibling = sibling->parent;
+                    }
+                    sibling->color = BLACK;
+                    rotate_left(map, parent);
+                } else {
+                    if (color(sibling->right) == RED) {
+                        sibling->color = RED;
+                        sibling->parent->color = BLACK;
+                        rotate_left(map, sibling);
+                        sibling = sibling->parent;
+                    }
+                    sibling->color = BLACK;
+                    rotate_right(map, parent);
+                }
             }
+        } else if (parent->color == BLACK && sibling->color == RED) {
+            sibling->color = BLACK;
+            parent->color = RED;
+            if (entry == parent->left) {
+                rotate_left(map, parent);
+            } else {
+                rotate_right(map, parent);
+            }
+        } else { // parent is red
+            parent->color = BLACK;
+            sibling->color = RED;
         }
-        if (entry == parent->left) {
-            rotate_left(map, sibling);
-            sibling->right->color = BLACK;
-        } else {
-            rotate_right(map, sibling);
-            sibling->left->color = BLACK;
-        }
-        sibling->color = parent->color;
-        parent->color = BLACK;
     }
 }
 
 static void map_remove_child(struct map *map, struct map_entry *entry, void **orig_key, void **orig_data) {
-    struct map_entry *child = entry->left == NULL ? entry->right : entry->left;
+    // root without children
+    if (entry->parent == NULL && entry->left == NULL && entry->right == NULL) {
+        map->entries = NULL;
+        free_entry(entry, orig_key, orig_data);
+        return;
+    }
 
     // a red leaf
     if (entry->color == RED) {
-        free_entry(entry, orig_key, orig_data);
-        return;
-    }
-
-    // entry with a red leaf
-    if (entry->left != NULL || entry->right != NULL) {
         if (entry == entry->parent->left) {
-            entry->parent->left = child;
+            entry->parent->left = NULL;
         } else {
-            entry->parent->right = child;
-        }
-        child->parent = entry->parent;
-        if (child->parent == NULL) { // root
-            map->entries = child;
+            entry->parent->right = NULL;
         }
         free_entry(entry, orig_key, orig_data);
         return;
     }
 
-    // a black node with no children
-    map_remove_fixup(map, entry);
+    // black node with a red leaf
+    if (entry->left != NULL || entry->right != NULL) {
+        struct map_entry *child = entry->left != NULL ? entry->left : entry->right;
+        child->parent = entry->parent;
+        if (child->parent == NULL) { // new root
+            child->color = BLACK;
+            map->entries = child;
+        } else {
+            if (entry == entry->parent->left) {
+                entry->parent->left = child;
+            } else {
+                entry->parent->right = child;
+            }
+        }
+        free_entry(entry, orig_key, orig_data);
+        return;
+    }
+
+    // non root black node without children
+    struct map_entry *sibling = get_sibling(entry);
+    if (entry == entry->parent->left) {
+        entry->parent->left = NULL;
+    } else {
+        entry->parent->right = NULL;
+    }
+
+    // fixup
+    if (entry->parent->color == BLACK && sibling->color == BLACK &&
+        entry->left == NULL && entry->right == NULL) {
+        sibling->color = RED;
+        map_remove_fixup(map, entry->parent, true);
+    } else {
+        map_remove_fixup(map, entry->parent, false);
+    }
     free_entry(entry, orig_key, orig_data);
 }
 

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "../src/utils/map.h"
 #include "../src/utils/list.h"
@@ -36,9 +37,11 @@ int main () {
     struct list *list = list_new();
     struct map *map = map_new(strkeycmp);
 
-    for (int i = 0; i < 10; i++) {
+    srandom(time(NULL));
+    for (int i = 0; i < 7; i++) {
         char *s = random_str(5);
         list_append(list, list_node(s));
+        printf("add: %s\n", s);
         map_add(map, s, s);
     }
     print_map(map);
@@ -50,16 +53,13 @@ int main () {
     printf("replaced %s, orig_key: %ld, orig_data: %ld\n", new_key, orig_key, orig_data);
     printf("has %s: %d, has NOWAY: %d\n", list_first(list)->data, map_has(map, list_first(list)->data), map_has(map, "NOWAY"));
     print_map(map);
-    /*
     // remove
-    printf("remove\n");
+    printf("AFTER remove:\n");
     struct list *p = list;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 3; i++) {
         p = list_next(list, p);
         printf("remove: %s\n", p->data);
-        map_remove(map, p->data, &orig_key, &orig_data);
+        map_remove(map, p->data, (void *)&orig_key, (void *)&orig_data);
     }
     print_map(map);
-    */
-    // update, replace
 }
