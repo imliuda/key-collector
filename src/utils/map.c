@@ -186,11 +186,7 @@ enum color color(struct map_entry *entry) {
     return BLACK;
 }
 
-/*
- * @param entry  fix this entry when dblack is true
- * @param dblack if true entry is double black
- */
-static void map_remove_fixup(struct map *map, struct map_entry *entry, bool dblack) {
+static void map_remove_fixup(struct map *map, struct map_entry *entry) {
     struct map_entry *grandparent = get_grandparent(entry);
     struct map_entry *parent = get_parent(entry);
     struct map_entry *uncle = get_uncle(entry);
@@ -200,44 +196,36 @@ static void map_remove_fixup(struct map *map, struct map_entry *entry, bool dbla
         entry->color = BLACK; // really nead?
         return;
     }
-    if (dblack) {
-        if (parent->color == BLACK && sibling->color == BLACK) {
-            if (color(entry->left) == BLACK && color(entry->right) == BLACK) { // sibling without red children
-                sibling->color = RED;
-                map_remove_fixup(map, parent, true);
-            } else { // sibling has at least one red child
-                if (entry == parent->left) {
-                    if (color(sibling->left) == RED) {
-                        sibling->color = RED;
-                        sibling->parent->color = BLACK;
-                        rotate_right(map, sibling);
-                        sibling = sibling->parent;
-                    }
-                    sibling->color = BLACK;
-                    rotate_left(map, parent);
-                } else {
-                    if (color(sibling->right) == RED) {
-                        sibling->color = RED;
-                        sibling->parent->color = BLACK;
-                        rotate_left(map, sibling);
-                        sibling = sibling->parent;
-                    }
-                    sibling->color = BLACK;
-                    rotate_right(map, parent);
-                }
-            }
-        } else if (parent->color == BLACK && sibling->color == RED) {
-            sibling->color = BLACK;
-            parent->color = RED;
+    if (parent->color == BLACK && sibling->color == BLACK) {
+        if (color(sibling->left) == BLACK && color(sibling->right) == BLACK) { // sibling without red children
+            sibling->color = RED;
+            map_remove_fixup(map, parent);
+        } else { // sibling has at least one red child
             if (entry == parent->left) {
+                if (color(sibling->left) == RED) {
+                    sibling->left->color = BLACK;
+                    rotate_right(map, sibling);
+                }
                 rotate_left(map, parent);
             } else {
+                if (color(sibling->right) == RED) {
+                    sibling->right->color = BLACK;
+                    rotate_left(map, sibling);
+                }
                 rotate_right(map, parent);
             }
-        } else { // parent is red
-            parent->color = BLACK;
-            sibling->color = RED;
         }
+    } else if (parent->color == BLACK && sibling->color == RED) {
+        sibling->color = BLACK;
+        parent->color = RED;
+        if (entry == parent->left) {
+            rotate_left(map, parent);
+        } else {
+            rotate_right(map, parent);
+        }
+    } else { // parent is red
+        parent->color = BLACK;
+        sibling->color = RED;
     }
 }
 
@@ -279,20 +267,12 @@ static void map_remove_child(struct map *map, struct map_entry *entry, void **or
     }
 
     // non root black node without children
-    struct map_entry *sibling = get_sibling(entry);
+    map_remove_fixup(map, entry);
+
     if (entry == entry->parent->left) {
         entry->parent->left = NULL;
     } else {
         entry->parent->right = NULL;
-    }
-
-    // fixup
-    if (entry->parent->color == BLACK && sibling->color == BLACK &&
-        entry->left == NULL && entry->right == NULL) {
-        sibling->color = RED;
-        map_remove_fixup(map, entry->parent, true);
-    } else {
-        map_remove_fixup(map, entry->parent, false);
     }
     free_entry(entry, orig_key, orig_data);
 }

@@ -38,7 +38,7 @@ int main () {
     struct map *map = map_new(strkeycmp);
 
     srandom(time(NULL));
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 10; i++) {
         char *s = random_str(5);
         list_append(list, list_node(s));
         printf("add: %s\n", s);
@@ -56,10 +56,11 @@ int main () {
     // remove
     printf("AFTER remove:\n");
     struct list *p = list;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 5; i++) {
         p = list_next(list, p);
         printf("remove: %s\n", p->data);
         map_remove(map, p->data, (void *)&orig_key, (void *)&orig_data);
+	print_map(map);
     }
     print_map(map);
 }
