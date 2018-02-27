@@ -186,11 +186,7 @@ enum color color(struct map_entry *entry) {
     return BLACK;
 }
 
-/*
- * @param entry  fix this entry when dblack is true
- * @param dblack if true entry is double black
- */
-static void map_remove_fixup(struct map *map, struct map_entry *entry, bool dblack) {
+static void map_remove_fixup(struct map *map, struct map_entry *entry) {
     struct map_entry *grandparent = get_grandparent(entry);
     struct map_entry *parent = get_parent(entry);
     struct map_entry *uncle = get_uncle(entry);
@@ -200,44 +196,51 @@ static void map_remove_fixup(struct map *map, struct map_entry *entry, bool dbla
         entry->color = BLACK; // really nead?
         return;
     }
-    if (dblack) {
-        if (parent->color == BLACK && sibling->color == BLACK) {
-            if (color(entry->left) == BLACK && color(entry->right) == BLACK) { // sibling without red children
+    if (sibling->color == BLACK) {
+        if (color(sibling->left) == BLACK && color(sibling->right) == BLACK) {
+            if (parent->color == RED) {
+                parent->color = BLACK;
                 sibling->color = RED;
-                map_remove_fixup(map, parent, true);
-            } else { // sibling has at least one red child
-                if (entry == parent->left) {
-                    if (color(sibling->left) == RED) {
-                        sibling->color = RED;
-                        sibling->parent->color = BLACK;
-                        rotate_right(map, sibling);
-                        sibling = sibling->parent;
-                    }
-                    sibling->color = BLACK;
-                    rotate_left(map, parent);
-                } else {
-                    if (color(sibling->right) == RED) {
-                        sibling->color = RED;
-                        sibling->parent->color = BLACK;
-                        rotate_left(map, sibling);
-                        sibling = sibling->parent;
-                    }
-                    sibling->color = BLACK;
-                    rotate_right(map, parent);
-                }
-            }
-        } else if (parent->color == BLACK && sibling->color == RED) {
-            sibling->color = BLACK;
-            parent->color = RED;
-            if (entry == parent->left) {
-                rotate_left(map, parent);
             } else {
-                rotate_right(map, parent);
+                sibling->color = RED;
+                map_remove_fixup(map, parent);
             }
-        } else { // parent is red
-            parent->color = BLACK;
+        } else if (entry == parent->left && color(sibling->left) == RED && color(sibling->right) == BLACK) {
+            rotate_right(map, sibling);
             sibling->color = RED;
+            sibling->parent->color = BLACK;
+            map_remove_fixup(map, entry);
+        } else if (entry == parent->right && color(sibling->right) == RED && color(sibling->left) == BLACK) {
+            rotate_left(map, sibling);
+            sibling->color = RED;
+            sibling->parent->color = BLACK;
+            map_remove_fixup(map, entry);
+        } else if (entry == parent->left && color(sibling->right) == RED) {
+            rotate_left(map, parent);
+            enum color tmp = parent->color;
+            parent->color = sibling->color;
+            sibling->color = tmp;
+            if (sibling->right != NULL) {
+                sibling->right->color = BLACK;
+            }
+        } else if (entry == parent->right && color(sibling->left) == RED) {
+            rotate_right(map, parent);
+            enum color tmp = parent->color;
+            parent->color = sibling->color;
+            sibling->color = tmp;
+            if (sibling->left != NULL) {
+                sibling->left->color = BLACK;
+            }
         }
+    } else {
+        sibling->color = BLACK;
+        parent->color = RED;
+        if (entry == parent->left) {
+            rotate_left(map, parent);
+        } else {
+            rotate_right(map, parent);
+        }
+        map_remove_fixup(map, entry);
     }
 }
 
@@ -264,8 +267,8 @@ static void map_remove_child(struct map *map, struct map_entry *entry, void **or
     if (entry->left != NULL || entry->right != NULL) {
         struct map_entry *child = entry->left != NULL ? entry->left : entry->right;
         child->parent = entry->parent;
+        child->color = BLACK;
         if (child->parent == NULL) { // new root
-            child->color = BLACK;
             map->entries = child;
         } else {
             if (entry == entry->parent->left) {
@@ -279,20 +282,12 @@ static void map_remove_child(struct map *map, struct map_entry *entry, void **or
     }
 
     // non root black node without children
-    struct map_entry *sibling = get_sibling(entry);
+    map_remove_fixup(map, entry);
+
     if (entry == entry->parent->left) {
         entry->parent->left = NULL;
     } else {
         entry->parent->right = NULL;
-    }
-
-    // fixup
-    if (entry->parent->color == BLACK && sibling->color == BLACK &&
-        entry->left == NULL && entry->right == NULL) {
-        sibling->color = RED;
-        map_remove_fixup(map, entry->parent, true);
-    } else {
-        map_remove_fixup(map, entry->parent, false);
     }
     free_entry(entry, orig_key, orig_data);
 }
