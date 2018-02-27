@@ -196,26 +196,43 @@ static void map_remove_fixup(struct map *map, struct map_entry *entry) {
         entry->color = BLACK; // really nead?
         return;
     }
-    if (parent->color == BLACK && sibling->color == BLACK) {
-        if (color(sibling->left) == BLACK && color(sibling->right) == BLACK) { // sibling without red children
-            sibling->color = RED;
-            map_remove_fixup(map, parent);
-        } else { // sibling has at least one red child
-            if (entry == parent->left) {
-                if (color(sibling->left) == RED) {
-                    sibling->left->color = BLACK;
-                    rotate_right(map, sibling);
-                }
-                rotate_left(map, parent);
+    if (sibling->color == BLACK) {
+        if (color(sibling->left) == BLACK && color(sibling->right) == BLACK) {
+            if (parent->color == RED) {
+                parent->color = BLACK;
+                sibling->color = RED;
             } else {
-                if (color(sibling->right) == RED) {
-                    sibling->right->color = BLACK;
-                    rotate_left(map, sibling);
-                }
-                rotate_right(map, parent);
+                sibling->color = RED;
+                map_remove_fixup(map, parent);
+            }
+        } else if (entry == parent->left && color(sibling->left) == RED && color(sibling->right) == BLACK) {
+            rotate_right(map, sibling);
+            sibling->color = RED;
+            sibling->parent->color = BLACK;
+            map_remove_fixup(map, entry);
+        } else if (entry == parent->right && color(sibling->right) == RED && color(sibling->left) == BLACK) {
+            rotate_left(map, sibling);
+            sibling->color = RED;
+            sibling->parent->color = BLACK;
+            map_remove_fixup(map, entry);
+        } else if (entry == parent->left && color(sibling->right) == RED) {
+            rotate_left(map, parent);
+            enum color tmp = parent->color;
+            parent->color = sibling->color;
+            sibling->color = tmp;
+            if (sibling->right != NULL) {
+                sibling->right->color = BLACK;
+            }
+        } else if (entry == parent->right && color(sibling->left) == RED) {
+            rotate_right(map, parent);
+            enum color tmp = parent->color;
+            parent->color = sibling->color;
+            sibling->color = tmp;
+            if (sibling->left != NULL) {
+                sibling->left->color = BLACK;
             }
         }
-    } else if (parent->color == BLACK && sibling->color == RED) {
+    } else {
         sibling->color = BLACK;
         parent->color = RED;
         if (entry == parent->left) {
@@ -223,9 +240,7 @@ static void map_remove_fixup(struct map *map, struct map_entry *entry) {
         } else {
             rotate_right(map, parent);
         }
-    } else { // parent is red
-        parent->color = BLACK;
-        sibling->color = RED;
+        map_remove_fixup(map, entry);
     }
 }
 
@@ -252,8 +267,8 @@ static void map_remove_child(struct map *map, struct map_entry *entry, void **or
     if (entry->left != NULL || entry->right != NULL) {
         struct map_entry *child = entry->left != NULL ? entry->left : entry->right;
         child->parent = entry->parent;
+        child->color = BLACK;
         if (child->parent == NULL) { // new root
-            child->color = BLACK;
             map->entries = child;
         } else {
             if (entry == entry->parent->left) {
