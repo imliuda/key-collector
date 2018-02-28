@@ -220,17 +220,13 @@ static void map_remove_fixup(struct map *map, struct map_entry *entry) {
             enum color tmp = parent->color;
             parent->color = sibling->color;
             sibling->color = tmp;
-            if (sibling->right != NULL) {
-                sibling->right->color = BLACK;
-            }
+            sibling->right->color = BLACK;
         } else if (entry == parent->right && color(sibling->left) == RED) {
             rotate_right(map, parent);
             enum color tmp = parent->color;
             parent->color = sibling->color;
             sibling->color = tmp;
-            if (sibling->left != NULL) {
-                sibling->left->color = BLACK;
-            }
+            sibling->left->color = BLACK;
         }
     } else {
         sibling->color = BLACK;
@@ -309,13 +305,8 @@ void map_remove(struct map *map, void *key, void **orig_key, void **orig_data) {
                 return;
             }
             struct map_entry *sm = get_min(p->right);
-            void *tmp;
-            tmp = p->key;
             p->key = sm->key;
-            sm->key = tmp;
-            tmp = p->data;
             p->data = sm->data;
-            sm->data = tmp;
             map_remove_child(map, sm, orig_key, orig_data);
             return;
         } else if (c < 0) {
