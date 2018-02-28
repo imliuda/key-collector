@@ -1,7 +1,7 @@
 #ifndef __OSCLT_CONFIG_H__
 #define __OSCLT_CONFIG_H__
 
-#include "utils/list.h"
+#include "list.h"
 
 typedef enum cp_state cp_state;
 typedef struct config_entry config_entry;
@@ -19,6 +19,8 @@ struct config_entry {
     char *key;
     char *value;
 };
+
+extern struct list * restrict config; 
 
 void config_dumps();
 void config_load(const char *path);

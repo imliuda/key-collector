@@ -1,4 +1,3 @@
-check_PROGRAMS = test_list test_config test_map
-test_list_SOURCES = test_list.c ../src/utils/list.h ../src/utils/list.c
-test_config_SOURCES = test_config.c ../src/config.h ../src/config.c ../src/utils/str.h ../src/utils/str.c ../src/utils/list.h ../src/utils/list.c
-test_map_SOURCES = test_map.c ../src/utils/map.c ../src/utils/map.h ../src/utils/list.h ../src/utils/list.c
+check_PROGRAMS = test_list test_map
+test_list_SOURCES = test_list.c ../src/list.h ../src/list.c
+test_map_SOURCES = test_map.c ../src/map.c ../src/map.h ../src/list.h ../src/list.c

@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "../src/utils/list.h"
+#include "../src/list.h"
 
 int compare(void *data1, void *data2) {
     return *(int *)data1 - *(int *)data2;

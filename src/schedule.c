@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <jansson.h>
 #include <ev.h>
 #include "schedule.h"
 #include "config.h"

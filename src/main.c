@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
     argp_parse(&argp, argc, argv, 0, 0, &cparam);
 
     cname = strsep(&cparam, ":");
-    config_load(cname, cparam);
+    config_load(cparam);
     schedule_load(&task_list);
 
     struct ev_loop *loop = ev_default_loop(0);

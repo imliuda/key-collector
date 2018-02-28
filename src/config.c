@@ -6,10 +6,10 @@
 #include <ctype.h>
 
 #include "config.h"
-#include "utils/list.h"
-#include "utils/str.h"
+#include "list.h"
+#include "str.h"
 
-static oc_list * restrict oc_config = NULL;
+struct list * restrict config = NULL;
 
 static void config_error(char buf[], int index, char *msg) {
     int line_num = 1;
@@ -43,8 +43,8 @@ static char *config_string(char *str, char c) {
 }
 
 void config_dumps() {
-    oc_list *p = oc_config;
-    while (p = oc_list_next(oc_config, p)) {
+    struct list *p = config;
+    while (p = list_next(config, p)) {
         printf("section: %s, ", ((config_entry *)p->data)->section);
         printf("key: %s, ", ((config_entry *)p->data)->key);
         printf("value: %s\n", ((config_entry *)p->data)->value);
@@ -72,7 +72,7 @@ void config_load(const char *path) {
     char *section = config_string(NULL, '\0');
     char *value = config_string(NULL, '\0');
     char error[512];
-    oc_config = oc_list_new();
+    config = list_new();
 
     for (int i=0; i<fsize; i++) {
         if (s == CP_NONE) {
@@ -147,9 +147,9 @@ void config_load(const char *path) {
                 entry->section = section;
                 entry->key = key;
                 entry->value = value;
-                oc_list *node = malloc(sizeof(oc_list));
+                struct list *node = malloc(sizeof(struct list));
                 node->data = entry;
-                oc_list_append(oc_config, node);
+                list_append(config, node);
 
                 // reset key and value
                 key = config_string(NULL, '\0');
