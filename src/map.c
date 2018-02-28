@@ -305,8 +305,13 @@ void map_remove(struct map *map, void *key, void **orig_key, void **orig_data) {
                 return;
             }
             struct map_entry *sm = get_min(p->right);
+            void *tmp;
+            tmp = p->key;
             p->key = sm->key;
+            sm->key = tmp;
+            tmp = p->data;
             p->data = sm->data;
+            sm->data = tmp;
             map_remove_child(map, sm, orig_key, orig_data);
             return;
         } else if (c < 0) {
