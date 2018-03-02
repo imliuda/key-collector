@@ -426,6 +426,7 @@ static void map_keys_internal(struct list *keys, struct map_entry *entry) {
 struct list *map_keys(struct map *map) {
     struct list *keys = list_new();
     map_keys_internal(keys, map->entries);
+    return keys;
 }
 
 static void map_destroy_internal(struct map_entry *entry) {
