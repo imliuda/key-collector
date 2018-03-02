@@ -26,12 +26,12 @@ struct map {
 
 struct map *map_new(int (*keycmp)(void *key1, void *key2));
 bool map_has(struct map *map, void *key);
-void map_add(struct map *map, void *key, void *data);
-void map_update(struct map *map, void *key, void *data, void **orig_data);
-void map_replace(struct map *map, void *key, void *data, void **orig_key, void **orig_data);
-void map_remove(struct map *map, void *key, void **orig_key, void **orig_data);
-void map_get(struct map *map, void *key, void **data);
-void map_keys(struct map *map, struct list **keys);
+bool map_add(struct map *map, void *key, void *data);
+bool map_update(struct map *map, void *key, void *data, void **orig_data);
+bool map_replace(struct map *map, void *key, void *data, void **orig_key, void **orig_data);
+bool map_remove(struct map *map, void *key, void **orig_key, void **orig_data);
+bool map_get(struct map *map, void *key, void **data);
+struct list *map_keys(struct map *map);
 void map_destroy(struct map *map);
 
 #endif
