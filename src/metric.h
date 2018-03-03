@@ -35,10 +35,7 @@ struct metric {
     struct metric_time time;
 };
 
-// clock_gettime(clockid_t clk_id, struct timespec *tp);
-// CLOCK_REALTIME
-
-struct metric *metric_new(const char *name);
+struct metric *metric_new();
 void metric_new_full(const char *name, struct map *tags, struct map *fields, struct metric_time time);
 struct list *metric_parse(const char *buf);
 char *metric_serialize(struct list *metrics);
