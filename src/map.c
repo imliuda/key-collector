@@ -134,13 +134,13 @@ static void map_add_internal(struct map *map, struct map_entry *entry) {
  * before calling this function, must call map_has() to check if key
  * already exisits.
  */
-void map_add(struct map *map, void *key, void *data) {
+bool map_add(struct map *map, void *key, void *data) {
     struct map_entry *p = map->entries;
     int c;
     while (p != NULL) {
         c = map->keycmp(key, p->key);
         if (c == 0) {
-            return;
+            return false;
         } else if (c < 0 && p->left != NULL) {
             p = p->left;
         } else if (c > 0 && p->right != NULL) {
@@ -164,6 +164,7 @@ void map_add(struct map *map, void *key, void *data) {
         p->right = entry;
     }
     map_add_internal(map, entry);
+    return true;
 }
 
 static struct map_entry *get_min(struct map_entry *entry) {
@@ -294,7 +295,7 @@ static void map_remove_child(struct map *map, struct map_entry *entry, void **or
  * before calling this function, must call map_has() to check if key
  * already exisits.
  */
-void map_remove(struct map *map, void *key, void **orig_key, void **orig_data) {
+bool map_remove(struct map *map, void *key, void **orig_key, void **orig_data) {
     struct map_entry *p = map->entries;
     *orig_key = *orig_data = NULL;
     while (p != NULL) {
@@ -302,7 +303,7 @@ void map_remove(struct map *map, void *key, void **orig_key, void **orig_data) {
         if (c == 0) {
             if (p->left == NULL || p->right == NULL) {
                 map_remove_child(map, p, orig_key, orig_data);
-                return;
+                return true;
             }
             struct map_entry *sm = get_min(p->right);
             void *tmp;
@@ -313,13 +314,14 @@ void map_remove(struct map *map, void *key, void **orig_key, void **orig_data) {
             p->data = sm->data;
             sm->data = tmp;
             map_remove_child(map, sm, orig_key, orig_data);
-            return;
+            return true;
         } else if (c < 0) {
             p = p->left;
         } else {
             p = p->right;
         }
     }
+    return false;
 }
 
 /*
@@ -330,7 +332,7 @@ void map_remove(struct map *map, void *key, void **orig_key, void **orig_data) {
  *
  * @param[output] if not NULL, stores the orig_data.
  */
-void map_update(struct map *map, void *key, void *data, void **orig_data) {
+bool map_update(struct map *map, void *key, void *data, void **orig_data) {
     struct map_entry *p = map->entries;
     while (p != NULL) {
         int c = map->keycmp(key, p->key);
@@ -339,14 +341,14 @@ void map_update(struct map *map, void *key, void *data, void **orig_data) {
                 *orig_data = p->data;
             }
             p->data = data;
-            return;
+            return true;
         } else if (c < 0) {
             p = p->left;
         } else {
             p = p->right;
         }
     }
-    *orig_data = NULL;
+    return false;
 }
 
 /*
@@ -358,7 +360,7 @@ void map_update(struct map *map, void *key, void *data, void **orig_data) {
  * @param[putput] orig_key if not NULL, stores the origin key.
  * @param[output] orig_data if not NULL, stores the origin key's data.
  */
-void map_replace(struct map *map, void *key, void *data, void **orig_key, void **orig_data) {
+bool map_replace(struct map *map, void *key, void *data, void **orig_key, void **orig_data) {
     struct map_entry *p = map->entries;
     while (p != NULL) {
         int c = map->keycmp(key, p->key);
@@ -371,14 +373,14 @@ void map_replace(struct map *map, void *key, void *data, void **orig_key, void *
             }
             p->key = key;
             p->data = data;
-            return;
+            return true;
         } else if (c < 0) {
             p = p->left;
         } else {
             p = p->right;
         }
     }
-    *orig_key = *orig_data = NULL;
+    return false;
 }
 
 /*
@@ -392,19 +394,20 @@ void map_replace(struct map *map, void *key, void *data, void **orig_key, void *
  * @param[output] data  store the found data, if data is NULL, this
  *              function will test if key is in map.
  */
-void map_get(struct map *map, void *key, void **data) {
+bool map_get(struct map *map, void *key, void **data) {
     struct map_entry *p = map->entries;
     while (p != NULL) {
         int c = map->keycmp(key, p->key);
         if (c == 0) {
             *data = p->data;
-            return;
+            return true;
         } else if (c < 0) {
             p = p->left;
         } else if (c > 0) {
             p = p->right;
         }
     }
+    return false;
 }
 
 static void map_keys_internal(struct list *keys, struct map_entry *entry) {
@@ -420,9 +423,10 @@ static void map_keys_internal(struct list *keys, struct map_entry *entry) {
  *
  * @param[output] list stores the keys, must be freed by user after use.
  */
-void map_keys(struct map *map, struct list **keys) {
-    *keys = list_new();
-    map_keys_internal(*keys, map->entries);
+struct list *map_keys(struct map *map) {
+    struct list *keys = list_new();
+    map_keys_internal(keys, map->entries);
+    return keys;
 }
 
 static void map_destroy_internal(struct map_entry *entry) {

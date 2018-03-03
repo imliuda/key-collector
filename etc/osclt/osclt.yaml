@@ -1,0 +1,35 @@
+log_level: debug
+collect:
+  exec:
+    default:
+      interval: 30s
+      environment:
+        PATH: /usr/lib/osclt/bin
+        LD_LIBRARY_PATH: /usr/lib/osclt/lib
+      timeout: 20s
+    cpu_usage:
+      cmd: cpu_usage -d 300 -i 30
+      interval: 30s
+      timeout: 5s
+    dimm_info:
+      cmd: zvzxcv
+  socket:
+    unix: /var/run/osclt/collect.sock
+    mode: 0755
+  log:
+    file: /var/log/osclt/osclt.log
+
+process:
+  cpu_usage:
+    function: differ
+    param: 234
+
+cache:
+  cpu_usage:
+    max_cache: 234
+    hhg: 90
+
+output:
+  influxdb:
+    server: 10.0.234.3
+    port : 234

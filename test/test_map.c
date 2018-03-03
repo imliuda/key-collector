@@ -106,19 +106,18 @@ int main () {
     struct list *list = list_new();
     struct map *map = map_new(strkeycmp);
 
-    srandom(time(NULL));
     for (int i = 0; i < 15; i++) {
         char *s = random_str(5);
         list_append(list, list_node(s));
-        printf("add: %s\n", s);
-        map_add(map, s, s);
+        printf("add: %s, return %d\n", s, map_add(map, s, s));
     }
     print_map(map);
     char *s1 = "1", *s2 = "2";
-    map_update(map, list_first(list)->data, s1, (void **)&orig_data);
+    printf("get should true: %d\n", map_get(map, list_first(list)->data, (void **)&data));
+    printf("update should true: %d\n", map_update(map, list_first(list)->data, s1, (void **)&orig_data));
     printf("updated %s, orig_data: %ld\n", list_first(list)->data, orig_data);
     char *new_key = strdup(list_last(list)->data);
-    map_replace(map, new_key, s2, (void **)&orig_key, (void **)&orig_data);
+    printf("replace should true: %d\n", map_replace(map, new_key, s2, (void **)&orig_key, (void **)&orig_data));
     printf("replaced %s, orig_key: %ld, orig_data: %ld\n", new_key, orig_key, orig_data);
     printf("has %s: %d, has NOWAY: %d\n", list_first(list)->data, map_has(map, list_first(list)->data), map_has(map, "NOWAY"));
     print_map(map);
@@ -127,8 +126,7 @@ int main () {
     struct list *p = list;
     for (int i = 0; i < 7; i++) {
         p = list_next(list, p);
-        printf("remove: %s\n", p->data);
-        map_remove(map, p->data, (void *)&orig_key, (void *)&orig_data);
+        printf("remove: %s, return %d\n", p->data, map_remove(map, p->data, (void *)&orig_key, (void *)&orig_data));
         print_map(map);
     }
 }
