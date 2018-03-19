@@ -27,6 +27,16 @@ struct config *config_new() {
     return config;
 }
 
+void config_parse(struct config *config, wchar_t buf[], size_t buflen) {
+    /* parse config, wbuf has wcslen wchar_t character */
+    enum cp_state state = CP_START;
+    int line_num = 0, col_num = 0, n =0;
+    wchar_t c;
+    while (c = *(buf + n++), n < 10) {
+        printf("%lc\n", c);
+    }
+}
+
 void config_load(struct config *config, const char *path) {
     /* get file content to a buf */
     FILE *fp = fopen(path, "r");
@@ -53,42 +63,34 @@ void config_load(struct config *config, const char *path) {
         len -= 3;
     }
 
-    /* convert buf to wchar_t */
-    size_t wbuflen = len * sizeof(wchar_t);
-    size_t wlen = wbuflen;
-    wchar_t *wbuf = malloc(wbuflen); /* need optimise */
-    char *inptr = buf;
-    char *wrptr = (char *)wbuf;
-    int nconv;
-    iconv_t cd = iconv_open("WCHAR_T", "UTF-8");
-    if (cd == (iconv_t) -1) {
-        fprintf(stderr, "iconv_open failed: %s\n", strerror(errno));
-        exit(1);
-    }
+    /* convert char buf to wchar_t buf */
+    mbstate_t mbs;
+    wchar_t *wbuf = NULL, wc;
+    size_t nbytes, wbuflen = 0, wcslen = 0;
+    char *tbuf = buf;
+    memset(&mbs, 0, sizeof(mbs));
     while (len > 0) {
-        nconv = iconv(cd, &inptr, &len, &wrptr, &wlen);
-        if (nconv == -1) {
-            fprintf(stderr, "converting config file encoding error: %s.\n", strerror);
+        if ((nbytes = mbrtowc(&wc, tbuf, len, &mbs)) > 0) {
+            if (nbytes >= (size_t) -2) {
+                fprintf(stderr, "config file encoding error.\n");
+                exit(1);
+            }
+            if (wcslen >= wbuflen) {
+                wbuflen += 64;
+                wbuf = realloc(wbuf, wbuflen * sizeof(wchar_t));
+            }
+            wbuf[wcslen++] = wc;
+            len -= nbytes;
+            tbuf += nbytes;
+        } else {
+            fprintf(stderr, "invalid '\0' character in config file.\n");
             exit(1);
-        } 
-    }
-    wbuflen -= wlen;
-    wbuflen = wbuflen / 4;
-    if (iconv_close(cd) != 0) {
-        fprintf(stderr, "iconv_close error: %s", strerror(errno));
-        exit(1);
+        }
     }
     free(buf);
 
-    setlocale(LC_CTYPE, "C");
-
-    /* parse config */
-    enum cp_state state = CP_START;
-    int line_num = 0, col_num = 0, n =0;
-    wchar_t c;
-    while (c = *(wbuf + n++), n < 10) {
-        printf("%x\n", c);
-    }
+    config_parse(config, wbuf, wcslen);
+    free(wbuf);
 }
 
 char *config_get_string(struct config *config, const char *name) {
