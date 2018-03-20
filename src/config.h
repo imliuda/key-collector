@@ -3,21 +3,32 @@
 
 #include "map.h"
 
+enum config_type {
+    CONFIG_OBJECT_TYPE,
+    CONFIG_ARRAY_TYPE,
+    CONFIG_STRING_TYPE,
+    CONFIG_INTEGER_TYPE,
+    CONFIG_FLOAT_TYPE,
+    CONFIG_BOOLEAN_TYPE,
+    CONFIG_DURATION_TYPE
+}
+
 struct config {
-    struct map *map;
-};
+    enum config_type type;
+    void *value;
+}
 
 struct duration {
     struct timespec time;
 };
 
-enum cp_state {
-    CP_START,
-    CP_OBJECT,
-    CP_LIST,
-    CP_KEY,
-    CP_VALUE,
-    CP_END
+enum config_parse_state {
+    CONFIG_PARSE_KEY,
+    CONFIG_PARSE_VALUE,
+    CONFIG_PARSE_OBJECT,
+    CONFIG_PARSE_LIST,
+    CONFIG_PARSE_COMMENT,
+    CONFIG_PARSE_NONE
 };
 
 struct config *config_new();
