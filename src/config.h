@@ -11,12 +11,12 @@ enum config_type {
     CONFIG_FLOAT_TYPE,
     CONFIG_BOOLEAN_TYPE,
     CONFIG_DURATION_TYPE
-}
+};
 
 struct config {
     enum config_type type;
     void *value;
-}
+};
 
 struct duration {
     struct timespec time;
@@ -31,7 +31,10 @@ enum config_parse_state {
     CONFIG_PARSE_NONE
 };
 
-struct config *config_new();
-void config_load(struct config *config, const char *path);
+static struct config *config_parse_object(wchar_t buf[], size_t *cursor, size_t buflen);
+static struct config *config_parse_array(wchar_t buf[], size_t *cursor, size_t buflen);
+static struct config *config_parse_simple(wchar_t buf[], size_t *cursor, size_t buflen);
+
+struct config *config_load(const char *path);
 
 #endif

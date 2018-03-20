@@ -2,14 +2,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-#include <iconv.h>
 #include <locale.h>
 #include <errno.h>
 #include <wchar.h>
 #include <wctype.h>
+#include <assert.h>
 #include <sys/file.h>
 
 #include "map.h"
+#include "list.h"
 #include "config.h"
 
 #ifndef __STDC_ISO_10646__
@@ -20,39 +21,77 @@ static int keycmp(void *key1, void *key2) {
     return strcmp((char *)key1, (char *)key2);
 }
 
-struct config *config_new() {
-    struct map *map = map_new(keycmp);
-    struct config *config= malloc(sizeof(struct config));
-    config->map = map;
-    return config;
+static inline bool config_is_whitespace(wchar_t c) {
+    return iswspace(c);
 }
 
-static void config_skip_comment(wchar_t buf[], size_t *cursor, size_t buflen) {
-    while(c = buf[*cursor], (*cursor)++ < buflen) {
-        if (c == '\n') break;
-    }
+static inline void config_skip_whitespace(wchar_t buf[], size_t *cursor, size_t buflen) {
+    while(*cursor < buflen && config_is_whitespace(buf[*cursor])) *cursor += 1;
 }
 
-static void config_skip_separator(wchar_t buf[], size_t *cursor, size_t buflen) {
-    while (c = buf[*cursor], (*cursor)++ <buflen) {
-        if (c == '=' || c == ':') break;
-    }
-}
-
-static char *config_parse_key(wchar_t buf, size_t *cursor, size_t buflen) {
-    size_t start = *cursor, end;
-    char *key = 
-    while (c = buf[*cursor], *cursor < buflen) {
-        if (iswspace(c)) {
+static inline void config_skip_comment(wchar_t buf[], size_t *cursor, size_t buflen) {
+    wchar_t c;
+    while(c = buf[*cursor], *cursor < buflen) {
+        if (c == '\n') {
             *cursor += 1;
-            start = *cursor;
+            break;
+        } else if (c == '\r' && (*cursor < buflen - 1 && buf[*cursor + 1] == '\n')) {
+            *cursor += 2;
+            break;
+        }
+        *cursor += 1;
+    }
+}
+
+static inline void config_skip_separator(wchar_t buf[], size_t *cursor, size_t buflen) {
+    wchar_t c;
+    while (c = buf[*cursor], (*cursor)++ <buflen) {
+        if (c == '=' || c == ':') return;
+    }
+    fprintf(stderr, "can't find separator '=' or ':'.\n");
+    exit(1);
+}
+
+static inline bool config_is_newline(wchar_t buf[], size_t *cursor, size_t buflen) {
+    if (buf[*cursor] == '\n' || (*cursor < buflen - 1 && buf[*cursor] == '\r' && buf[*cursor + 1] == '\n')) {
+        return true;
+    }
+    return false;
+}
+
+char *wcs_to_bs(wchar_t buf[], size_t len) {
+    char *str = NULL; 
+    int strlen = 0;
+    for (int i = 0; i < len; i++) {
+        char bytes[MB_CUR_MAX];
+        int n = wctomb(bytes, buf[i]);
+        str = realloc(str, strlen + n);
+        strncpy(str + strlen, bytes, n);
+        strlen += n;
+    }
+    str = realloc(str, strlen + 1);
+    str[strlen] = '\0';
+    return str;
+}
+
+static char *config_parse_key(wchar_t buf[], size_t *cursor, size_t buflen) {
+    wchar_t c;
+    while (c = buf[*cursor], *cursor < buflen) {
+        if (config_is_whitespace(c)) {
+            config_skip_whitespace(buf, cursor, buflen);
         } else if (c == '#') {
             config_skip_comment(buf, cursor, buflen);
-            start = *cursor;
         } else {
-            end = start;
-            while (c = buf[*cursor], *cursor < buflen - 1 && c != '=' && c != ':'){
-                if (!iswspace(c)) {
+            size_t start = *cursor, end = *cursor;
+            while (c = buf[*cursor], *cursor < buflen) {
+                if (config_is_newline(buf, cursor, buflen)) {
+                    fprintf(stderr, "keys can't expand multi-line.\n");
+                    exit(1);
+                }
+                if (c == '=' || c == ':'){
+                    break;
+                }
+                if (!config_is_whitespace(c)) {
                     end = *cursor;
                 }
                 *cursor += 1;
@@ -61,37 +100,46 @@ static char *config_parse_key(wchar_t buf, size_t *cursor, size_t buflen) {
                 fprintf(stderr, "key can't be empty.\n");
                 exit(1);
             }
-            return strndup(buf[start], end - start);
+            printf("key: %s\n", wcs_to_bs(buf + start, end - start + 1));
+            return strndup(buf + start, end - start);
         }
     }
 }
 
 static struct config *config_parse_object(wchar_t buf[], size_t *cursor, size_t buflen) {
-    char *key;
-    struct config_value *value, *object = malloc(sizeof(struct config_value));
-    object->type = CONFIG_VALUE_OBJECT;
+    printf("config_parse_object\n");
+    wchar_t c;
+    char *key = NULL;
+    struct config *value = NULL, *object = malloc(sizeof(struct config));
+    object->type = CONFIG_OBJECT_TYPE;
     object->value = map_new(keycmp);
+    printf("cursor: %ld\n", *cursor);
     while (c = buf[*cursor], *cursor < buflen) {
-        if (iswspace(c)) {
-            *cursor += 1;
+        printf("%lc\n", c);
+        if (config_is_whitespace(c)) {
+            config_skip_whitespace(buf, cursor, buflen);
         } else if (c == '#') {
             config_skip_comment(buf, cursor, buflen);
         } else if (c == '}') {
-            return ;
-        } else if (*cursor = buflen - 1) {
-            return;
+            return object;
         }
         key = config_parse_key(buf, cursor, buflen);
+        /* here, there must be '=' or ':' in the same line */
         config_skip_separator(buf, cursor, buflen);
         while (c = buf[*cursor], *cursor < buflen) {
-            if (iswspace(c)) {
-                *cursor += 1;
+            if (config_is_newline(buf, cursor, buflen)) {
+                fprintf(stderr, "value must start in the same line of key.\n");
+                exit(1);
+            } else if (config_is_whitespace(c)) {
+                config_skip_whitespace(buf, cursor, buflen);
             } else if (c == '#') {
                 config_skip_comment(buf, cursor, buflen);
             } else if (c == '{') {
+                *cursor += 1;
                 value = config_parse_object(buf, cursor, buflen);
                 break;
             } else if (c == '[') {
+                *cursor += 1;
                 value = config_parse_array(buf, cursor, buflen);
                 break;
             } else {
@@ -99,61 +147,87 @@ static struct config *config_parse_object(wchar_t buf[], size_t *cursor, size_t 
                 break;
             }
         }
+        assert(key != NULL);
+        assert(value != NULL);
         map_add(object->value, key, value);
     }
 }
 
-static struct config *config_parse_array(wchar_t buf, size_t *cursor, size_t buflen) {
+static struct config *config_parse_array(wchar_t buf[], size_t *cursor, size_t buflen) {
+    printf("config_parse_array\n");
     wchar_t c;
     struct config *array = malloc(sizeof(struct config));
     array->type = CONFIG_ARRAY_TYPE;
     array->value = list_new();
     while (c = buf[*cursor], *cursor < buflen) {
-        if (iswspace(c)) {
-            *cursor += 1;
+        if (config_is_whitespace(c)) {
+            config_skip_whitespace(buf, cursor, buflen);
         } else if (c == '#') {
-            config_skip_comment();
+            config_skip_comment(buf, cursor, buflen);
         } else if (c == ',') {
             if (list_length(array->value) == 0) {
-                fprintf(stderr, "comma before first array element.\n");
-                exit(0);
+                fprintf(stderr, "comma before first element of array.\n");
+                exit(1);
             } else {
                 *cursor += 1;
             }
         } else if (c == ']') {
-            *cursor ++;
+            *cursor += 1;
             return array;
         } else if (c == '{') {
+            *cursor += 1;
             struct config *object = config_parse_object(buf, cursor, buflen);
-            list_add(array->value, object);
+            list_append(array->value, object);
         } else if (c == '[') {
+            *cursor += 1;
             struct config *array = config_parse_array(buf, cursor, buflen);
-            list_add(array->value, array);
+            list_append(array->value, array);
         } else {
             struct config *simple = config_parse_simple(buf, cursor, buflen);
-            list_add(array->value, simple);
+            list_append(array->value, simple);
         }
     }
 }
 
-static config_value *config_parse_simple() {
-
+static struct config *config_parse_simple(wchar_t buf[], size_t *cursor, size_t buflen) {
+    printf("config_parse_simple\n");
+    wchar_t c;
+    struct config *simple = malloc(sizeof(struct config));
+    simple->type = CONFIG_STRING_TYPE;
+    simple->value = NULL;
+    while (c = buf[*cursor], *cursor < buflen) {
+        if (config_is_whitespace(c)) {
+            config_skip_whitespace(buf, cursor, buflen);
+        } else {
+            int start = *cursor, end = *cursor;
+            while (!config_is_newline(buf, cursor, buflen)) {
+                if (!config_is_whitespace(buf[*cursor])) {
+                    end = *cursor;
+                }
+                *cursor += 1;
+            }
+            printf("string value: %s\n", wcs_to_bs(buf + start, end - start + 1));
+            simple->value = wcs_to_bs(buf + start, end - start + 1);
+            return simple;
+        }
+    }
 }
 
 struct config *config_parse(struct config *config, wchar_t buf[], size_t buflen) {
     /* parse config, buf has buflen wchar_t character */
+    printf("config_parse\n");
     wchar_t c;
     size_t cursor = 0;
     while (c = buf[cursor], cursor < buflen) {
-        if (iswspace(c)) { /*skip whitespace*/
-            n++;
+        if (config_is_whitespace(c)) { /* skip whitespace */
+            config_skip_whitespace(buf, &cursor, buflen);
         } else if (c == '#') { /* skip comment */
             config_skip_comment(buf, &cursor, buflen);
         } else if (c == '[') {
             fprintf(stderr, "root element must be an object, not an array.\n");
             exit(1);
         } else if (c == '{') { /* explicit root brace */
-            n++;
+            cursor += 1;
             break;
         } else { /* key starts, implicit root brace */
             break;
@@ -162,7 +236,7 @@ struct config *config_parse(struct config *config, wchar_t buf[], size_t buflen)
     if (config == NULL) {
         return config_parse_object(buf, &cursor, buflen);
     } else {
-        return config_merge(config, config_parse_object(buf, &cursor, buflen));
+        //return config_merge(config, config_parse_object(buf, &cursor, buflen));
     }
 }
 
