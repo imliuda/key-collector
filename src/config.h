@@ -1,7 +1,13 @@
 #ifndef __OSCLT_CONFIG_H__
 #define __OSCLT_CONFIG_H__
 
+#include <stdbool.h>
+
 #include "map.h"
+
+#define WHITESPACE  1
+#define COMMENT     2
+#define SEPARATOR   4
 
 enum config_type {
     CONFIG_OBJECT_TYPE,
@@ -13,6 +19,12 @@ enum config_type {
     CONFIG_DURATION_TYPE
 };
 
+struct config_parse_buffer {
+    wchar_t buffer[];
+    size_t offset;
+    size_t length;
+}
+
 struct config {
     enum config_type type;
     void *value;
@@ -22,19 +34,10 @@ struct duration {
     struct timespec time;
 };
 
-enum config_parse_state {
-    CONFIG_PARSE_KEY,
-    CONFIG_PARSE_VALUE,
-    CONFIG_PARSE_OBJECT,
-    CONFIG_PARSE_LIST,
-    CONFIG_PARSE_COMMENT,
-    CONFIG_PARSE_NONE
-};
+static struct config *config_parse_object(struct config_parse_buffer *buf);
+static struct config *config_parse_array(struct config_parse_buffer *buf);
+static struct config *config_parse_simple(struct config_parse_buffer *buf);
 
-static struct config *config_parse_object(wchar_t buf[], size_t *cursor, size_t buflen);
-static struct config *config_parse_array(wchar_t buf[], size_t *cursor, size_t buflen);
-static struct config *config_parse_simple(wchar_t buf[], size_t *cursor, size_t buflen);
-
-struct config *config_load(const char *path);
+struct config *config_load_file(const char *path);
 
 #endif
