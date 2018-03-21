@@ -5,9 +5,9 @@
 
 #include "map.h"
 
-#define WHITESPACE  1
-#define COMMENT     2
-#define SEPARATOR   4
+#define SKIP_WHITESPACE 1
+#define SKIP_COMMENT    2
+#define SKIP_SEPARATOR  4
 
 enum config_type {
     CONFIG_OBJECT_TYPE,
@@ -20,10 +20,10 @@ enum config_type {
 };
 
 struct config_parse_buffer {
-    wchar_t buffer[];
+    wchar_t *buffer;
     size_t offset;
     size_t length;
-}
+};
 
 struct config {
     enum config_type type;
