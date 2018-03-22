@@ -173,6 +173,7 @@ static char *config_parse_key(struct config_parse_buffer *buf) {
         config_error(buf, "object key can't be empty.");
     }
     char *key =  wcs_to_bs(buf->buffer + start, end - start + 1);
+    printf("key: %s\n", key);
     if (key[0] == '.') {
         config_error(buf, "key's first character can't be '.'.");
     }
@@ -252,6 +253,7 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
             }
             assert(key != NULL);
             assert(value != NULL);
+            has_fields = true;
             map_add(object->value, key, value);
         }
     }
@@ -300,24 +302,176 @@ static struct config *config_parse_array(struct config_parse_buffer *buf) {
  */
 static struct config *config_parse_simple(struct config_parse_buffer *buf) {
     wchar_t c;
+    struct config *simple = NULL;
+
+    if (simple = config_parse_string(buf)) {
+        return simple;
+    } else if (simple = config_parse_number(buf)) {
+        return simple;
+    } else if (simple = config_parse_boolean(buf)) {
+        return simple;
+    } else if (simple = config_parse_duration(buf)) {
+        return simple;
+    }
+    config_error(buf, "unknown value type.");
+}
+
+/*
+ * string is double quoted unicode characters except '"', '\' and
+ * control characters. escape characters: 
+ * \", \\, \/, \b, \f, \n, \r, \t, \u .
+ */
+static struct config *config_parse_string(struct config_parse_buffer *buf) {
+    size_t start = buf->offset, end = buf->offset, offset = buf->offset, length = buf->length;
+    wchar_t *buffer = buf->buffer;
+    bool match = false;
+
+    if (buffer[offset] != '"') return NULL;
+    offset++;
+
+    while (offset < length) {
+        /* read end of line or object fields separator ',' */
+        if (buffer[offset] == '\n') {
+            if (match == true) break;
+            else config_error(buf, "string quotes don't match.");
+        } else if (buffer[offset] == ',' && match) {
+            break;
+        } else if (buffer[offset] == '"' && buffer[offset - 1] != '\\'){
+            match = true;
+        }
+        end = ++offset;
+    }
+
+    // when success, update buf->offset
+    buf->offset = offset;
+
+    // skip qoutes
+    start += 1; end -= 1;
+    char *str = wcs_to_bs(buffer, end - start);
+    //end = end -start; start = 0;
+    //for (int i = start; i < end - 1; i++) {
+    //    if ((buffer[i] == '"' || buffer[i] == '\' || buffer[i] == '/' ||
+    //        buffer[i] == 'b' || buffer[i] == 'f' || buffer[i] == 'n' ||
+    //        buffer[i] == 'r' || buffer[i] == 't') &&
+    //        buffer[i - 1] == '\') {
+    //        str[start++] = str
+    //    }
+    //}
+    printf("string value: %s\n", wcs_to_bs(buf->buffer + start, end - start));
+    struct config *simple = malloc(sizeof(struct config));
+    simple->type = CONFIG_STRING_TYPE;
+    simple->value = wcs_to_bs(buf->buffer + start, end - start);
+    return simple;
+}
+
+static struct config *config_parse_number(struct config_parse_buffer *buf) {
+    size_t start, end, offset = buf->offset, length = buf->length;
+    wchar_t *buffer = buf->buffer;
+    int sign = 1, base = 10;
+    enum config_type type = CONFIG_INTEGER_TYPE;
+    bool dot_parsed = false;
     struct config *simple;
 
-    simple = malloc(sizeof(struct config));
-    simple->type = CONFIG_STRING_TYPE;
-    simple->value = NULL;
-
-    size_t start = buf->offset, end = buf->offset;
-    while (buf->offset < buf->length) {
-        if (buf->buffer[buf->offset] == '\n') {
-            end--;
-            break;
-        }
-        buf->offset++;
-        end = buf->offset;
+    if (buffer[offset] == '+') {
+        offset++;
+    } else if (buffer[offset] == '-') {
+        sign = -1;
+        offset++;
     }
-    printf("string value: %s\n", wcs_to_bs(buf->buffer + start, end - start + 1));
-    simple->value = wcs_to_bs(buf->buffer + start, end - start + 1);
+
+    if (offset == length) return NULL;
+
+    if (buffer[offset] == '0') {
+        offset++;
+        if (offset == length) {
+            simple = malloc(sizeof(struct config));
+            simple->type = CONFIG_INTEGER_TYPE;
+            simple->value = 0;
+            return simple;
+        } else if (buffer[offset] == 'x') {
+            base = 16;
+            offset++;
+        } else if (iswdigit(buffer[offset])) {
+            base = 8;
+        } else {
+            return NULL;
+        }
+    }
+
+    if (offset == length) return NULL;
+ 
+    start = offset; end = offset;
+    while (offset < length) {
+        if (buffer[offset] == '.') {
+            if (dot_parsed) {
+                return NULL;
+            } else {
+                dot_parsed = true;
+                type = CONFIG_DOUBLE_TYPE;
+            }
+        } else if (iswdigit(buffer[offset])) {
+            offset++;
+            end++;
+        } else if (buffer[offset] == ',') {
+            break;
+        } else {
+            config_skip_inline(buf, SKIP_WHITESPACE);
+            if (buffer[offset] != '\n') return NULL;
+            else break;
+        }
+    }
+
+    if (start == end) return NULL;
+    if (type == CONFIG_DOUBLE_TYPE && (buffer[start] == '.' || buffer[end - 1] == '.')) {
+        return NULL;
+    }
+
+    buf->offset = offset;
+    simple = malloc(sizeof(struct config));
+    simple->type = type;
+    char *str = wcs_to_bs(buffer + start, end - start);
+    if (type == CONFIG_INTEGER_TYPE) {
+        uint64_t *value = malloc(sizeof(uint64_t));
+        *value = strtoll(str, NULL, base);
+        simple->value = value;
+    } else {
+        double *value = malloc(sizeof(double));
+        *value = atof(str);
+        simple->value = value;
+    }
+    free(str);
+
     return simple;
+}
+
+static struct config *config_parse_boolean(struct config_parse_buffer *buf) {
+    size_t start = buf->offset, end = buf->offset, offset = buf->offset, length = buf->length;
+    wchar_t *buffer = buf->buffer;
+    struct config *simple = NULL;
+
+    if (offset <= length - 4 && buffer[offset] == 't' && buffer[offset + 1] == 'r' &&
+        buffer[offset + 2] == 'u' && buffer[offset + 3] == 'e') {
+        simple = malloc(sizeof(struct config));
+        simple->type = CONFIG_BOOLEAN_TYPE;
+        simple->value = malloc(sizeof(bool));
+        *(bool *)(simple->value) = true;
+        buf->offset += 4;
+        printf("boolean value: true\n");
+    }
+    if (offset <= length - 5 && buffer[offset] == 'f' && buffer[offset + 1] == 'a' &&
+        buffer[offset + 2] == 'l' && buffer[offset + 3] == 's' && buffer[offset + 4] == 'e') {
+        simple = malloc(sizeof(struct config));
+        simple->type = CONFIG_BOOLEAN_TYPE;
+        simple->value = malloc(sizeof(bool));
+        *(bool *)(simple->value) = false;
+        buf->offset += 5;
+        printf("boolean value: false\n");
+    }
+    return simple;
+}
+
+static struct config *config_parse_duration(struct config_parse_buffer *buf) {
+    return NULL;
 }
 
 struct config *config_parse(char *buf, size_t len) {
@@ -390,7 +544,7 @@ char *config_get_string(struct config *config, const char *name) {
 uint64_t config_get_integer() {
 }
 
-double config_get_float() {
+double config_get_double() {
 }
 
 bool config_get_boolean() {

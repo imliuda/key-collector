@@ -1,4 +1,5 @@
 #include <locale.h>
+#include <stdint.h>
 #include "../src/config.h"
 #include "../src/map.h"
 #include "../src/list.h"
@@ -27,7 +28,11 @@ void config_dumps(struct config *config, int level) {
             config_dumps(p->data, level + 1);
         }
     } else if (config->type == CONFIG_STRING_TYPE) {
-        printf("%s\n", config->value);
+        printf("\"%s\"\n", config->value);
+    } else if (config->type == CONFIG_INTEGER_TYPE) {
+        printf("%ld\n", *(uint64_t *)(config->value));
+    } else if (config->type == CONFIG_BOOLEAN_TYPE) {
+        printf("%s\n", *(bool *)(config->value) ? "true" : "false");
     }
 }
 

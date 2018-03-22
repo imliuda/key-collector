@@ -14,7 +14,7 @@ enum config_type {
     CONFIG_ARRAY_TYPE,
     CONFIG_STRING_TYPE,
     CONFIG_INTEGER_TYPE,
-    CONFIG_FLOAT_TYPE,
+    CONFIG_DOUBLE_TYPE,
     CONFIG_BOOLEAN_TYPE,
     CONFIG_DURATION_TYPE
 };
@@ -37,6 +37,10 @@ struct duration {
 static struct config *config_parse_object(struct config_parse_buffer *buf);
 static struct config *config_parse_array(struct config_parse_buffer *buf);
 static struct config *config_parse_simple(struct config_parse_buffer *buf);
+static struct config *config_parse_string(struct config_parse_buffer *buf);
+static struct config *config_parse_number(struct config_parse_buffer *buf);
+static struct config *config_parse_boolean(struct config_parse_buffer *buf);
+static struct config *config_parse_duration(struct config_parse_buffer *buf);
 
 struct config *config_load_file(const char *path);
 
