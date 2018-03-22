@@ -9,6 +9,12 @@
 #define SKIP_COMMENT    2
 #define SKIP_SEPARATOR  4
 
+struct config_parse_buffer {
+    wchar_t *buffer;
+    size_t offset;
+    size_t length;
+};
+
 enum config_type {
     CONFIG_OBJECT_TYPE,
     CONFIG_ARRAY_TYPE,
@@ -19,19 +25,24 @@ enum config_type {
     CONFIG_DURATION_TYPE
 };
 
-struct config_parse_buffer {
-    wchar_t *buffer;
-    size_t offset;
-    size_t length;
-};
-
 struct config {
     enum config_type type;
     void *value;
 };
 
+enum duration_unit {
+    DURATION_NANO_SECOND,
+    DURATION_MICRO_SECOND,
+    DURATION_MILLI_SECOND,
+    DURATION_SECOND,
+    DURATION_MINUTE,
+    DURATION_HOUR,
+    DURATION_DAY
+};
+
 struct duration {
-    struct timespec time;
+    enum duration_unit unit;
+    long value;
 };
 
 static struct config *config_parse_object(struct config_parse_buffer *buf);

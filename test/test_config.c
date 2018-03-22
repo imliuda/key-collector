@@ -33,6 +33,25 @@ void config_dumps(struct config *config, int level) {
         printf("%ld\n", *(uint64_t *)(config->value));
     } else if (config->type == CONFIG_BOOLEAN_TYPE) {
         printf("%s\n", *(bool *)(config->value) ? "true" : "false");
+    } else if (config->type == CONFIG_DURATION_TYPE) {
+        struct duration *d = config->value;
+        printf("%d", d->value);
+        if (d->unit == DURATION_NANO_SECOND) {
+            printf("ns");
+        } else if (d->unit == DURATION_MICRO_SECOND) {
+            printf("us");
+        } else if (d->unit == DURATION_MILLI_SECOND) {
+            printf("ms");
+        } else if (d->unit == DURATION_SECOND) {
+            printf("s");
+        } else if (d->unit == DURATION_MINUTE) {
+            printf("m");
+        } else if (d->unit == DURATION_HOUR) {
+            printf("h");
+        } else if (d->unit == DURATION_DAY) {
+            printf("d");
+        }
+        printf("\n");
     }
 }
 

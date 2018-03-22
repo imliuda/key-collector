@@ -24,41 +24,7 @@ static int keycmp(void *key1, void *key2) {
 static inline bool config_is_whitespace(wchar_t c) {
     return iswspace(c);
 }
-#if 0
-static inline void config_skip_whitespace(wchar_t buf[], size_t *cursor, size_t buflen) {
-    while(*cursor < buflen && config_is_whitespace(buf[*cursor])) *cursor += 1;
-}
 
-static inline void config_skip_comment(wchar_t buf[], size_t *cursor, size_t buflen) {
-    wchar_t c;
-    while(c = buf[*cursor], *cursor < buflen) {
-        if (c == '\n') {
-            *cursor += 1;
-            break;
-        } else if (c == '\r' && (*cursor < buflen - 1 && buf[*cursor + 1] == '\n')) {
-            *cursor += 2;
-            break;
-        }
-        *cursor += 1;
-    }
-}
-
-static inline void config_skip_separator(wchar_t buf[], size_t *cursor, size_t buflen) {
-    wchar_t c;
-    while (c = buf[*cursor], (*cursor)++ <buflen) {
-        if (c == '=' || c == ':') return;
-    }
-    fprintf(stderr, "can't find separator '=' or ':'.\n");
-    exit(1);
-}
-
-static inline bool config_is_newline(wchar_t buf[], size_t *cursor, size_t buflen) {
-    if (buf[*cursor] == '\n' || (*cursor < buflen - 1 && buf[*cursor] == '\r' && buf[*cursor + 1] == '\n')) {
-        return true;
-    }
-    return false;
-}
-#endif
 /*
  * skip unnecessary characters.
  *
@@ -101,6 +67,7 @@ static inline void config_skip_inline(struct config_parse_buffer *buf, int mode)
                    (SKIP_COMMENT & mode)) {
                 while (buf->offset < buf->length) {
                     if (buf->buffer[buf->offset++] == '\n') {
+                        buf->offset--;
                         return;
                     }
                 }
@@ -331,105 +298,154 @@ static struct config *config_parse_string(struct config_parse_buffer *buf) {
 
     while (offset < length) {
         /* read end of line or object fields separator ',' */
-        if (buffer[offset] == '\n') {
-            if (match == true) break;
-            else config_error(buf, "string quotes don't match.");
-        } else if (buffer[offset] == ',' && match) {
-            break;
+        if (buffer[offset] == '\n' && !match) {
+            config_error(buf, "string quotes don't match.");
         } else if (buffer[offset] == '"' && buffer[offset - 1] != '\\'){
-            match = true;
+            end = ++offset;
+            break;
+        } else {
+            offset++;
         }
-        end = ++offset;
     }
-
-    // when success, update buf->offset
-    buf->offset = offset;
 
     // skip qoutes
     start += 1; end -= 1;
-    char *str = wcs_to_bs(buffer, end - start);
-    //end = end -start; start = 0;
-    //for (int i = start; i < end - 1; i++) {
-    //    if ((buffer[i] == '"' || buffer[i] == '\' || buffer[i] == '/' ||
-    //        buffer[i] == 'b' || buffer[i] == 'f' || buffer[i] == 'n' ||
-    //        buffer[i] == 'r' || buffer[i] == 't') &&
-    //        buffer[i - 1] == '\') {
-    //        str[start++] = str
-    //    }
-    //}
-    printf("string value: %s\n", wcs_to_bs(buf->buffer + start, end - start));
+
+    char *str = wcs_to_bs(buffer + start, end - start);
+    char *new = malloc(64);
+    size_t index = 0, size = 0;
+    for (char *p = str; *p != '\0';) {
+        if ((*p == '"' || *p == '\\' || *p == '/' || *p == 'b' ||
+            *p == 'f' || *p == 'n' || *p == 'r' || *p == 't') && (p > str) && *(p - 1) == '\\') {
+            if (*p == '"') new[index - 1] = '\"';
+            else if (*p == '\\') new[index - 1] = '\\';
+            else if (*p == '/') new[index - 1] = '/';
+            else if (*p == 'b') new[index - 1] = '\b';
+            else if (*p == 'f') new[index - 1] = '\f';
+            else if (*p == 'n') new[index - 1] = '\n';
+            else if (*p == 'r') new[index - 1] = '\r';
+            else if (*p == 't') new[index - 1] = '\t';
+            p++;
+        } else if (*p == 'u' && (p > str) && *(p - 1) == '\\') {
+            p++;
+            if (*p == '\0' || *(p + 1) == '\0' || *(p + 2) == '\0' || *(p + 3) == '\0') {
+                config_error(buf, "unicode escape sequence must have 4 hexadecimal digit.");
+            }
+
+            char *e, us[5];
+            strncpy(us, p, 4);
+            us[4] = '\0';
+            wchar_t wc = strtol(us, &e, 16);
+            if (*e != '\0') config_error(buf, "unicode escape sequence must have 4 hexadecimal digit.");
+
+            char bytes[MB_CUR_MAX];
+            int nb = wcrtomb(bytes, wc, NULL);
+            if (nb == (size_t) -1) config_error(buf, "invalid unicode escape sequence.");
+            if (index + nb > size) {
+                new = realloc(new, size + 64);
+                size += 64;
+            }
+            strncpy(&new[--index], bytes, nb);
+            index += nb;
+            p += 4;
+        } else {
+            if (index == size) {
+                new = realloc(new, size + 64);
+                size += 64;
+            }
+            new[index++] = *p++;
+        }
+    }
+    if (index == size) {
+        new = realloc(new, size + 1);
+    }
+    new[index] = '\0';
+    free(str);
+
+    // update buf->offset
+    buf->offset = offset;
+
+    printf("string value: %s\n", new);
     struct config *simple = malloc(sizeof(struct config));
     simple->type = CONFIG_STRING_TYPE;
-    simple->value = wcs_to_bs(buf->buffer + start, end - start);
+    simple->value = new;
     return simple;
 }
 
 static struct config *config_parse_number(struct config_parse_buffer *buf) {
-    size_t start, end, offset = buf->offset, length = buf->length;
-    wchar_t *buffer = buf->buffer;
+    size_t start, end, offset = buf->offset;
     int sign = 1, base = 10;
     enum config_type type = CONFIG_INTEGER_TYPE;
     bool dot_parsed = false;
     struct config *simple;
 
-    if (buffer[offset] == '+') {
-        offset++;
-    } else if (buffer[offset] == '-') {
+    if (buf->buffer[buf->offset] == '+') {
+        buf->offset++;
+    } else if (buf->buffer[buf->offset] == '-') {
         sign = -1;
-        offset++;
+        buf->offset++;
     }
 
-    if (offset == length) return NULL;
+    if (buf->offset == buf->length) return NULL;
 
-    if (buffer[offset] == '0') {
-        offset++;
-        if (offset == length) {
+    if (buf->buffer[buf->offset] == '0') {
+        buf->offset++;
+        if (buf->offset == buf->length) {
             simple = malloc(sizeof(struct config));
             simple->type = CONFIG_INTEGER_TYPE;
             simple->value = 0;
             return simple;
-        } else if (buffer[offset] == 'x') {
+        } else if (buf->buffer[buf->offset] == 'x') {
             base = 16;
-            offset++;
-        } else if (iswdigit(buffer[offset])) {
+            buf->offset++;
+        } else if (iswdigit(buf->buffer[buf->offset])) {
             base = 8;
         } else {
             return NULL;
         }
     }
 
-    if (offset == length) return NULL;
+    if (buf->offset == buf->length && base == 16) return NULL;
  
-    start = offset; end = offset;
-    while (offset < length) {
-        if (buffer[offset] == '.') {
+    start = buf->offset; end = buf->offset;
+    while (buf->offset < buf->length) {
+        if (buf->buffer[buf->offset] == '.') {
             if (dot_parsed) {
                 return NULL;
             } else {
                 dot_parsed = true;
                 type = CONFIG_DOUBLE_TYPE;
             }
-        } else if (iswdigit(buffer[offset])) {
-            offset++;
+        } else if (iswdigit(buf->buffer[buf->offset])) {
+            buf->offset++;
             end++;
-        } else if (buffer[offset] == ',') {
+        } else if (buf->buffer[buf->offset] == ',') {
+            end++;
             break;
         } else {
-            config_skip_inline(buf, SKIP_WHITESPACE);
-            if (buffer[offset] != '\n') return NULL;
-            else break;
+            config_skip_inline(buf, SKIP_WHITESPACE | SKIP_COMMENT);
+            if (buf->offset != buf->length && buf->buffer[buf->offset] != '\n') {
+                buf->offset = offset;
+                return NULL;
+            } else {
+                end++;
+                break;
+            }
         }
     }
 
-    if (start == end) return NULL;
-    if (type == CONFIG_DOUBLE_TYPE && (buffer[start] == '.' || buffer[end - 1] == '.')) {
+    if (start == end) {
+        buf->offset = offset;
+        return NULL;
+    }
+    if (type == CONFIG_DOUBLE_TYPE && (buf->buffer[start] == '.' || buf->buffer[end - 1] == '.')) {
+        buf->offset = offset;
         return NULL;
     }
 
-    buf->offset = offset;
     simple = malloc(sizeof(struct config));
     simple->type = type;
-    char *str = wcs_to_bs(buffer + start, end - start);
+    char *str = wcs_to_bs(buf->buffer + start, end - start);
     if (type == CONFIG_INTEGER_TYPE) {
         uint64_t *value = malloc(sizeof(uint64_t));
         *value = strtoll(str, NULL, base);
@@ -440,6 +456,7 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
         simple->value = value;
     }
     free(str);
+    printf("lllc: %c\n", buf->buffer[buf->offset + 1]);
 
     return simple;
 }
@@ -470,8 +487,68 @@ static struct config *config_parse_boolean(struct config_parse_buffer *buf) {
     return simple;
 }
 
+/*
+ * parse duration type.
+ *
+ * supported unit: ns, us, ms, s, m, h, d.
+ */
 static struct config *config_parse_duration(struct config_parse_buffer *buf) {
-    return NULL;
+    /*parse value or unit */
+    size_t start, end;
+
+    start = end = buf->offset;
+    while (buf->offset < buf->length) {
+        if (iswdigit(buf->buffer[buf->offset])) end = ++buf->offset;
+        else break;
+    }
+    if (start == end) return NULL;
+    config_skip_inline(buf, SKIP_WHITESPACE);
+    char *value = wcs_to_bs(buf->buffer + start, end - start);
+
+    start = end = buf->offset;
+    while (buf->offset < buf->length) {
+        if (buf->buffer[buf->offset] == ',') break;
+        else if (!config_is_whitespace(buf->buffer[buf->offset])) end = ++buf->offset;
+        else break;
+    }
+    if (start == end) return NULL;
+    char *unit = wcs_to_bs(buf->buffer + start, end - start);
+
+    config_skip_inline(buf, SKIP_WHITESPACE | SKIP_COMMENT);
+    if (buf->offset != buf->length && buf->buffer[buf->offset] != '\n' && buf->buffer[buf->offset] != ',')
+        return NULL;
+
+    struct config *simple = malloc(sizeof(struct config));
+    struct duration *duration = malloc(sizeof(struct duration));
+
+    simple->type = CONFIG_DURATION_TYPE;
+    simple->value = duration;
+    duration->value = atol(value);
+
+    if (strcmp(unit, "ns") == 0) {
+        duration->unit = DURATION_NANO_SECOND;
+    } else if (strcmp(unit, "us") == 0) {
+        duration->unit = DURATION_MICRO_SECOND;
+    } else if (strcmp(unit, "ms") == 0) {
+        duration->unit = DURATION_MILLI_SECOND;
+    } else if (strcmp(unit, "s") == 0) {
+        duration->unit = DURATION_SECOND;
+    } else if (strcmp(unit, "m") == 0) {
+        duration->unit = DURATION_MINUTE;
+    } else if (strcmp(unit, "h") == 0) {
+        duration->unit = DURATION_HOUR;
+    } else if (strcmp(unit, "d") == 0) {
+        duration->unit = DURATION_DAY;
+    } else {
+        free(value);
+        free(unit);
+        free(simple);
+        free(duration);
+        return NULL;
+    }
+    free(value);
+    free(unit);
+    return simple;
 }
 
 struct config *config_parse(char *buf, size_t len) {
