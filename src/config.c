@@ -534,17 +534,15 @@ static struct config *config_parse_duration(struct config_parse_buffer *buf) {
 
     start = end = buf->offset;
     while (buf->offset < buf->length) {
-        if (buf->buffer[buf->offset] == ',' || buf->buffer[buf->offset] == '}' ||
-            buf->buffer[buf->offset] == ']' || buf->buffer[buf->offset] == '\n') {
-            end++;
-            break;
-        } else {
-            if (config_is_whitespace(buf->buffer[buf->offset])) {
+        if (!config_is_whitespace(buf->buffer[buf->offset])) {
+            if (buf->buffer[buf->offset] == ',' || buf->buffer[buf->offset] == '}' ||
+                buf->buffer[buf->offset] == ']' || buf->buffer[buf->offset] == '\n') {
                 break;
-            } else {
-                end++;
             }
+            end++;
             buf->offset++;
+        } else {
+            break;
         }
     }
     if (start == end) {
@@ -559,6 +557,7 @@ static struct config *config_parse_duration(struct config_parse_buffer *buf) {
         buf->offset = offset;
         return NULL;
     }
+    printf("v:%s u:%s c:%lc\n", value, unit, buf->buffer[buf->offset]);
 
     struct config *simple = malloc(sizeof(struct config));
     struct duration *duration = malloc(sizeof(struct duration));

@@ -27,6 +27,9 @@ void config_dumps(struct config *config, int level) {
         p = vs;
         printf("[\n");
         while (p = list_next(vs, p)) {
+            for (int i = 0; i < level; i++) {
+                printf("    ");
+            }
             config_dumps(p->data, level + 1);
         }
         for (int i = 1; i < level; i++) {
