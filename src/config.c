@@ -17,6 +17,14 @@
 #error "you compiler dos't support unicode."
 #endif
 
+static struct config *config_parse_object(struct config_parse_buffer *buf);
+static struct config *config_parse_array(struct config_parse_buffer *buf);
+static struct config *config_parse_simple(struct config_parse_buffer *buf);
+static struct config *config_parse_string(struct config_parse_buffer *buf);
+static struct config *config_parse_number(struct config_parse_buffer *buf);
+static struct config *config_parse_boolean(struct config_parse_buffer *buf);
+static struct config *config_parse_duration(struct config_parse_buffer *buf);
+
 static int keycmp(void *key1, void *key2) {
     return strcmp((char *)key1, (char *)key2);
 }
@@ -244,6 +252,7 @@ static struct config *config_parse_array(struct config_parse_buffer *buf) {
     array->value = list_new();
 
     while (buf->offset < buf->length) {
+        config_skip(buf, SKIP_WHITESPACE | SKIP_COMMENT);
         if (buf->buffer[buf->offset] == '[') {
             if (open_bracket) {
                 struct config *subarray = config_parse_array(buf);
@@ -253,24 +262,23 @@ static struct config *config_parse_array(struct config_parse_buffer *buf) {
                 open_bracket = true;
                 buf->offset++;
             }
+        } else if (buf->buffer[buf->offset] == ']') {
+            buf->offset++;
+            return array;
         } else if (buf->buffer[buf->offset] == ',') {
             if (has_values) {
                 buf->offset++;
             } else {
                 config_error(buf, "comma appears before first element of array.");
             }
-        } else if (buf->buffer[buf->offset] == ']') {
-            buf->offset++;
-            return array;
         } else if (buf->buffer[buf->offset] == '{') {
             printf("array object\n");
             struct config *object = config_parse_object(buf);
             list_append(array->value, list_node(object));
             has_values = true;
         } else {
-            config_skip(buf, SKIP_WHITESPACE | SKIP_COMMENT);
             if (buf->offset == buf->length) {
-                config_error(buf, "can't find object value.");
+                config_error(buf, "no close bracket.");
             }
 
             struct config *simple = config_parse_simple(buf);
@@ -425,7 +433,14 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
     }
 
     if (buf->offset == buf->length && base == 16) return NULL;
- 
+
+    /*
+     * 1. buf->offset == buf->length && (base == 8 || base == 10)
+     *    following while will not run, return NULL.
+     * 2. buf->offset != buf->length && (base == 8 || base == 10 || base == 16)
+     *    if character is '.' or digit end++, buf->offset++
+     *    else if character may be whitespace, normal character and special end character.
+     */ 
     start = buf->offset; end = buf->offset;
     while (buf->offset < buf->length) {
         if (buf->buffer[buf->offset] == '.') {
@@ -442,18 +457,15 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
             end++;
         } else {
             config_skip_inline(buf, SKIP_WHITESPACE | SKIP_COMMENT);
-            if (buf->offset != buf->length && buf->buffer[buf->offset] != '\n' &&
-                buf->buffer[buf->offset] != ',' && buf->buffer[buf->offset] != ']' &&
-                buf->buffer[buf->offset] != '}') {
+            if (buf->offset == buf->length || buf->buffer[buf->offset] == '\n' || buf->buffer[buf->offset] == ',' ||
+                buf->buffer[buf->offset] == ']' || buf->buffer[buf->offset] == '}') {
+                break;
+            } else {
                 buf->offset = offset;
                 return NULL;
-            } else {
-                end++;
-                break;
             }
         }
     }
-
     if (start == end) {
         buf->offset = offset;
         return NULL;
@@ -631,7 +643,7 @@ struct config *config_parse(char *buf, size_t len) {
     return config;
 }
 
-struct config *config_load_file(const char *path) {
+struct config *config_load(const char *path) {
     /* get file content to a buf */
     FILE *fp = fopen(path, "r");
     if (!fp) {
@@ -656,18 +668,86 @@ struct config *config_load_file(const char *path) {
     return config;
 }
 
-char *config_get_string(struct config *config, const char *name) {
+static void config_dumps_internal(struct config *config, int level) {
+    if (config->type == CONFIG_OBJECT_TYPE  ) {
+        printf("{\n");
+        struct list *key, *keys = map_keys(config->value);
+        key = keys;
+        while (key = list_next(keys, key)) {
+            for (int i = 0; i < level; i++) {
+                printf("    ");
+            }
+            printf("%s: ", key->data);
+            void *data;
+            map_get(config->value, key->data, &data);
+            config_dumps_internal(data, level + 1);
+        }
+        for (int i = 1; i < level; i++) {
+            printf("    ");
+        }
+        printf("}\n");
+    } else if (config->type == CONFIG_ARRAY_TYPE) {
+        struct list *p, *vs = config->value;
+        p = vs;
+        printf("[\n");
+        while (p = list_next(vs, p)) {
+            for (int i = 0; i < level; i++) {
+                printf("    ");
+            }
+            config_dumps_internal(p->data, level + 1);
+        }
+        for (int i = 1; i < level; i++) {
+            printf("    ");
+        }
+        printf("]\n");
+    } else if (config->type == CONFIG_STRING_TYPE) {
+        printf("\"%s\"\n", config->value);
+    } else if (config->type == CONFIG_INTEGER_TYPE) {
+        printf("%ld\n", *(uint64_t *)(config->value));
+    } else if (config->type == CONFIG_BOOLEAN_TYPE) {
+        printf("%s\n", *(bool *)(config->value) ? "true" : "false");
+    } else if (config->type == CONFIG_DURATION_TYPE) {
+        struct duration *d = config->value;
+        printf("%d", d->value);
+        if (d->unit == DURATION_NANO_SECOND) {
+            printf("ns");
+        } else if (d->unit == DURATION_MICRO_SECOND) {
+            printf("us");
+        } else if (d->unit == DURATION_MILLI_SECOND) {
+            printf("ms");
+        } else if (d->unit == DURATION_SECOND) {
+            printf("s");
+        } else if (d->unit == DURATION_MINUTE) {
+            printf("m");
+        } else if (d->unit == DURATION_HOUR) {
+            printf("h");
+        } else if (d->unit == DURATION_DAY) {
+            printf("d");
+        }
+        printf("\n");
+    }
+}
+
+void config_dumps(struct config *config) {
+    config_dumps_internal(config, 1);
+}
+
+const char *config_get_string(struct config *config, const char *key) {
     
 }
 
-uint64_t config_get_integer() {
+uint64_t config_get_integer(struct config *config, const char *key) {
+
 }
 
-double config_get_double() {
+double config_get_double(struct config *config, const char *key) {
+
 }
 
-bool config_get_boolean() {
+bool config_get_boolean(struct config *config, const char *key) {
+
 }
 
-struct duration config_get_duration() {
+struct duration config_get_duration(struct config *config, const char *key) {
+
 }

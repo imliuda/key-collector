@@ -45,14 +45,12 @@ struct duration {
     long value;
 };
 
-static struct config *config_parse_object(struct config_parse_buffer *buf);
-static struct config *config_parse_array(struct config_parse_buffer *buf);
-static struct config *config_parse_simple(struct config_parse_buffer *buf);
-static struct config *config_parse_string(struct config_parse_buffer *buf);
-static struct config *config_parse_number(struct config_parse_buffer *buf);
-static struct config *config_parse_boolean(struct config_parse_buffer *buf);
-static struct config *config_parse_duration(struct config_parse_buffer *buf);
-
-struct config *config_load_file(const char *path);
+struct config *config_load(const char *path);
+void config_dumps(struct config *config);
+const char *config_get_string(struct config *config, const char *key);
+uint64_t config_get_integer(struct config *config, const char *key);
+double config_get_double(struct config *config, const char *key);
+bool config_get_boolean(struct config *config, const char *key);
+struct duration config_get_duration(struct config *config, const char *key);
 
 #endif
