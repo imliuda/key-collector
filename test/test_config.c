@@ -24,9 +24,15 @@ void config_dumps(struct config *config, int level) {
         printf("}\n");
     } else if (config->type == CONFIG_ARRAY_TYPE) {
         struct list *p, *vs = config->value;
+        p = vs;
+        printf("[\n");
         while (p = list_next(vs, p)) {
             config_dumps(p->data, level + 1);
         }
+        for (int i = 1; i < level; i++) {
+            printf("    ");
+        }
+        printf("]\n");
     } else if (config->type == CONFIG_STRING_TYPE) {
         printf("\"%s\"\n", config->value);
     } else if (config->type == CONFIG_INTEGER_TYPE) {
