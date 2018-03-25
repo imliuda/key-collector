@@ -460,7 +460,7 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
             simple->type = CONFIG_INTEGER_TYPE;
             simple->value = 0;
             return simple;
-        } else if (buf->buffer[buf->offset] == 'x') {
+        } else if (buf->buffer[buf->offset] == 'x' || buf->buffer[buf->offset] == 'X') {
             base = 16;
             buf->offset++;
         } else if (iswdigit(buf->buffer[buf->offset])) {
@@ -491,6 +491,10 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
                 type = CONFIG_DOUBLE_TYPE;
             }
         } else if (iswdigit(buf->buffer[buf->offset])) {
+            buf->offset++;
+            end++;
+        } else if (base == 16 && (buf->buffer[buf->offset] >= 'a' && buf->buffer[buf->offset] <= 'f') ||
+                   buf->buffer[buf->offset] >= 'A' && buf->buffer[buf->offset] <= 'F') {
             buf->offset++;
             end++;
         } else {
