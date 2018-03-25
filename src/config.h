@@ -1,14 +1,26 @@
 #ifndef __OSCLT_CONFIG_H__
 #define __OSCLT_CONFIG_H__
 
+#include <stdbool.h>
+
 #include "map.h"
+
+#define SKIP_WHITESPACE 1
+#define SKIP_COMMENT    2
+#define SKIP_SEPARATOR  4
+
+struct config_parse_buffer {
+    wchar_t *buffer;
+    size_t offset;
+    size_t length;
+};
 
 enum config_type {
     CONFIG_OBJECT_TYPE,
     CONFIG_ARRAY_TYPE,
     CONFIG_STRING_TYPE,
     CONFIG_INTEGER_TYPE,
-    CONFIG_FLOAT_TYPE,
+    CONFIG_DOUBLE_TYPE,
     CONFIG_BOOLEAN_TYPE,
     CONFIG_DURATION_TYPE
 };
@@ -18,23 +30,29 @@ struct config {
     void *value;
 };
 
+enum duration_unit {
+    DURATION_NANO_SECOND,
+    DURATION_MICRO_SECOND,
+    DURATION_MILLI_SECOND,
+    DURATION_SECOND,
+    DURATION_MINUTE,
+    DURATION_HOUR,
+    DURATION_DAY
+};
+
 struct duration {
-    struct timespec time;
+    enum duration_unit unit;
+    long value;
 };
-
-enum config_parse_state {
-    CONFIG_PARSE_KEY,
-    CONFIG_PARSE_VALUE,
-    CONFIG_PARSE_OBJECT,
-    CONFIG_PARSE_LIST,
-    CONFIG_PARSE_COMMENT,
-    CONFIG_PARSE_NONE
-};
-
-static struct config *config_parse_object(wchar_t buf[], size_t *cursor, size_t buflen);
-static struct config *config_parse_array(wchar_t buf[], size_t *cursor, size_t buflen);
-static struct config *config_parse_simple(wchar_t buf[], size_t *cursor, size_t buflen);
 
 struct config *config_load(const char *path);
+void config_dumps(struct config *config);
+struct config *config_get_object(struct config *config, const char *key);
+struct config *config_get_array(struct config *config, const char *key);
+const char *config_get_string(struct config *config, const char *key, const char *def);
+long long config_get_integer(struct config *config, const char *key, long long def);
+double config_get_double(struct config *config, const char *key, double def);
+bool config_get_boolean(struct config *config, const char *key, bool def);
+struct duration config_get_duration(struct config *config, const char *key, long long value, enum duration_unit unit);
 
 #endif

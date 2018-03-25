@@ -1,32 +1,26 @@
 #include <locale.h>
+#include <stdint.h>
+
 #include "../src/config.h"
 #include "../src/map.h"
 #include "../src/list.h"
 
-void config_dumps(struct config *config) {
-    if (config->type == CONFIG_OBJECT_TYPE  ) {
-        struct list *key, *keys = map_keys(config->value);
-        key = keys;
-        while (key = list_next(keys, key)) {
-            printf("key: %s\n", key->data);
-            void *data;
-            map_get(config->value, key, &data);
-            config_dumps(data);
-        }
-    } else if (config->type == CONFIG_ARRAY_TYPE) {
-        struct list *p, *vs = config->value;
-        while (p = list_next(vs, p)) {
-            config_dumps(p);
-        }
-    } else if (config->type == CONFIG_STRING_TYPE) {
-        printf("%s\n", config->value);
-    }
-}
-
 int main() {
-    setlocale(LC_CTYPE, "C.UTF-8");
+    if (setlocale(LC_CTYPE, "C.UTF-8") == NULL) {
+        fprintf(stderr, "can't set local C.UTF-8.\n");
+        exit(EXIT_FAILURE);
+    }
 
-    struct config *config = config_load("../etc/osclt/osclt.conf");
-    printf("load finished\n");
+    struct config *config = config_load("./test_config.conf");
     config_dumps(config);
+    printf("a.s: %s\n", config_get_string(config, "a.s", "default"));
+    printf("a.i: %ld\n", config_get_integer(config, "a.i", 10));
+    printf("a.f: %lf\n", config_get_double(config, "a.f", 23.4));
+    printf("a.b: %d\n", config_get_boolean(config, "a.b", false));
+    struct duration d = config_get_duration(config, "a.d", 34, DURATION_SECOND);
+    printf("a.d: %ld, %d\n", d.value, d.unit);
+    struct config *object = config_get_object(config, "a.o");
+    config_dumps(object);
+    struct config *array = config_get_array(config, "a.a");
+    config_dumps(array);
 }
