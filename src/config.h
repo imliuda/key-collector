@@ -47,10 +47,12 @@ struct duration {
 
 struct config *config_load(const char *path);
 void config_dumps(struct config *config);
-const char *config_get_string(struct config *config, const char *key);
-uint64_t config_get_integer(struct config *config, const char *key);
-double config_get_double(struct config *config, const char *key);
-bool config_get_boolean(struct config *config, const char *key);
-struct duration config_get_duration(struct config *config, const char *key);
+struct config *config_get_object(struct config *config, const char *key);
+struct config *config_get_array(struct config *config, const char *key);
+const char *config_get_string(struct config *config, const char *key, const char *def);
+long long config_get_integer(struct config *config, const char *key, long long def);
+double config_get_double(struct config *config, const char *key, double def);
+bool config_get_boolean(struct config *config, const char *key, bool def);
+struct duration config_get_duration(struct config *config, const char *key, long long value, enum duration_unit unit);
 
 #endif

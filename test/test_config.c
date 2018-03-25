@@ -11,6 +11,16 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    struct config *config = config_load("../etc/osclt/osclt.conf");
+    struct config *config = config_load("./test_config.conf");
     config_dumps(config);
+    printf("a.s: %s\n", config_get_string(config, "a.s", "default"));
+    printf("a.i: %ld\n", config_get_integer(config, "a.i", 10));
+    printf("a.f: %lf\n", config_get_double(config, "a.f", 23.4));
+    printf("a.b: %d\n", config_get_boolean(config, "a.b", false));
+    struct duration d = config_get_duration(config, "a.d", 34, DURATION_SECOND);
+    printf("a.d: %ld, %d\n", d.value, d.unit);
+    struct config *object = config_get_object(config, "a.o");
+    config_dumps(object);
+    struct config *array = config_get_array(config, "a.a");
+    config_dumps(array);
 }

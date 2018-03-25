@@ -6,7 +6,6 @@
 #include <errno.h>
 #include <wchar.h>
 #include <wctype.h>
-#include <assert.h>
 #include <sys/file.h>
 
 #include "map.h"
@@ -131,41 +130,49 @@ static void config_error(struct config_parse_buffer *buf, char *msg) {
 /*
  * buf->buffer[buf->offset] is non-empty, non-comment.
  * key[0] can't be '.'.
+ * escape character in quoted keys has no special meaning.
  */
-static char *config_parse_key(struct config_parse_buffer *buf) {
+static wchar_t *config_parse_key(struct config_parse_buffer *buf) {
     size_t start = buf->offset, end = buf->offset;
-    bool quote = false, match;
     while (buf->offset < buf->length) {
         if (buf->buffer[buf->offset] == '=' || buf->buffer[buf->offset] == ':') {
             break;
         } else if (buf->buffer[buf->offset] == '\n') {
             config_error(buf, "object key can't expand multi-line.");
-        } else if (buf->buffer[buf->offset] == '"') {
-            if (!quote) quote = true;
-            else {
-                if (match) config_error(buf, "invalid key.");
-                else match = true;
-            }
         } else {
             if (!config_is_whitespace(buf->buffer[buf->offset])) end++;
             buf->offset++;
         }
     }
-    if (end - start == 0) {
+    if (start == end) {
         config_error(buf, "object key can't be empty.");
     }
-    char *key =  wcs_to_bs(buf->buffer + start, end - start);
-    printf("key: %s\n", key);
-    if (key[0] == '.') {
-        config_error(buf, "key's first character can't be '.'.");
+
+    if (buf->buffer[start] == '.' || buf->buffer[end - 1] == '.')
+        config_error(buf, "key's first and last character can't be '.'.");
+
+    bool quote = false, match = false;
+    for (size_t i = start; i < end; i++) {
+        if (buf->buffer[i] == '"') {
+            if (match) config_error(buf, "additional quotation mark."); 
+            if (!quote) quote = true;
+            else match = true;
+            if (!match && i != start && buf->buffer[i - 1] != '.')
+                config_error(buf, "expecting '.' before start quotation mark.");
+            if (match && i != end - 1 && buf->buffer[i + 1] != '.')
+                config_error(buf, "expecting '.' after end quotation mark.");
+        }
     }
+    wchar_t *key = malloc((end - start + 1) * sizeof(wchar_t));
+    memcpy(key, buf->buffer + start, (end - start) * sizeof(wchar_t));
+    key[end - start] = L'\0';
+    printf("key: %ls\n", key);
     return key;
 }
 
 static struct config *config_parse_object(struct config_parse_buffer *buf) {
     wchar_t c;
     bool has_fields = false, open_brace = false;
-    char *key = NULL;
     struct config *value = NULL, *object;
 
     object = malloc(sizeof(struct config));
@@ -199,7 +206,7 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
                 config_error(buf, "comma appears before first element of object.");
             }
         } else {
-            key = config_parse_key(buf);
+            wchar_t *key = config_parse_key(buf);
 
             config_skip_inline(buf, SKIP_WHITESPACE);
 
@@ -233,10 +240,41 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
                     break;
                 }
             }
-            assert(key != NULL);
-            assert(value != NULL);
+
+            size_t start = 0, end = 0;
+            bool quote = false;
+            char *pk;
+            struct map *curr = object->value;
+            for (int i = 0; i < wcslen(key); i++) {
+                if (key[i] == '.' && quote == false) {
+                    pk = wcs_to_bs(key + start, end - start);
+                    if (!map_has(curr, pk)) {
+                        struct config *child = malloc(sizeof(struct config));
+                        child->type = CONFIG_OBJECT_TYPE;
+                        child->value = map_new(keycmp);
+                        map_add(curr, pk, child);
+                        curr = child->value;
+                    } else {
+                        free(pk);
+                    }
+                    start = i + 1;
+                    end = i + 1;
+                } else if (key[i] == '"') {
+                    if (quote == false) quote = true;
+                    else quote = false;
+                    end++;
+                } else {
+                    end++;
+                }
+            }
+            pk = wcs_to_bs(key + start, end - start);
+            if (map_has(curr, pk))
+                config_error(buf, "duplicated key.");
+            else
+                map_add(curr, pk, value);
+
+            free(key);
             has_fields = true;
-            map_add(object->value, key, value);
         }
     }
 }
@@ -669,6 +707,7 @@ struct config *config_load(const char *path) {
 }
 
 static void config_dumps_internal(struct config *config, int level) {
+    if (config == NULL) return; 
     if (config->type == CONFIG_OBJECT_TYPE  ) {
         printf("{\n");
         struct list *key, *keys = map_keys(config->value);
@@ -732,22 +771,97 @@ void config_dumps(struct config *config) {
     config_dumps_internal(config, 1);
 }
 
-const char *config_get_string(struct config *config, const char *key) {
-    
+static struct config *config_get(struct config *config, const char *key) {
+    if (config == NULL || config->type != CONFIG_OBJECT_TYPE) return NULL;
+    bool quote = false;
+    size_t start = 0, end = 0;
+    struct map *curr = config->value;
+    for (int i = 0; i < strlen(key); i++) {
+        if (key[i] == '.' && quote == false) {
+            char *k = strndup(key + start, end - start);
+            struct config *child;
+            if (!map_get(curr, k, (void **)&child)) {
+                free(k);
+                return NULL;
+            }
+            if (child->type != CONFIG_OBJECT_TYPE) {
+                free(k);
+                return NULL;
+            }
+            free(k);
+            curr = child->value;
+            start = i + 1;
+            end = i + 1;
+        } else if (key[i] == '"') {
+            if (quote == false) quote = true;
+            else quote = false;
+            end++;
+        } else {
+            end++;
+        }
+    }
+    struct config *value;
+    if (!map_get(curr, (void *)&key[start], (void **)&value)) {
+        return NULL;
+    }
+    return value;
 }
 
-uint64_t config_get_integer(struct config *config, const char *key) {
-
+struct config *config_get_object(struct config *config, const char *key) {
+    struct config *value = config_get(config, key);
+    if (!value || value->type != CONFIG_OBJECT_TYPE) {
+        return NULL;
+    }
+    return value;
 }
 
-double config_get_double(struct config *config, const char *key) {
-
+struct config *config_get_array(struct config *config, const char *key) {
+    struct config *value = config_get(config, key);
+    if (!value || value->type != CONFIG_ARRAY_TYPE) {
+        return NULL;
+    }
+    return value;
 }
 
-bool config_get_boolean(struct config *config, const char *key) {
-
+const char *config_get_string(struct config *config, const char *key, const char *def) {
+    struct config *value = config_get(config, key);
+    if (!value || value->type != CONFIG_STRING_TYPE) {
+        return def;
+    }
+    return value->value;
 }
 
-struct duration config_get_duration(struct config *config, const char *key) {
+long long config_get_integer(struct config *config, const char *key, long long def) {
+    struct config *value = config_get(config, key);
+    if (!value || value->type != CONFIG_INTEGER_TYPE) {
+        return def;
+    }
+    return *(long long *)value->value;
+}
 
+double config_get_double(struct config *config, const char *key, double def) {
+    struct config *value = config_get(config, key);
+    if (!value || value->type != CONFIG_DOUBLE_TYPE) {
+        return def;
+    }
+    return *(double *)value->value;
+}
+
+bool config_get_boolean(struct config *config, const char *key, bool def) {
+    struct config *value = config_get(config, key);
+    if (!value || value->type != CONFIG_BOOLEAN_TYPE) {
+        return def;
+    }
+    return *(bool *)value->value;
+}
+
+struct duration config_get_duration(struct config *config, const char *key, long long value, enum duration_unit unit) {
+    struct config *d = config_get(config, key);
+    if (!d || d->type != CONFIG_DURATION_TYPE) {
+        struct duration r;
+        r.value = value;
+        r.unit = unit;
+        return r;
+    }
+    return *(struct duration *)d->value;
 }
