@@ -190,10 +190,11 @@ void list_foreach(struct list *list, void (*foreach)(void *data, void *user_data
 }
 
 void list_destroy(struct list *list) {
-    struct list *p = list->next;
+    struct list *next, *p = list->next;
     while (p != list) {
+        next = p->next;
     	free(p);
-        p = p->next;
+        p = next;
     }
     free(list);
 }

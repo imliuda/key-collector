@@ -34,5 +34,7 @@ int main() {
     while(p = list_next(keys, p)) {
         printf("%s ", list_data(p));
     }
+    list_destroy(keys);
     printf("\n");
+    config_destroy(config);
 }
