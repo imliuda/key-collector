@@ -45,7 +45,7 @@ enum duration_unit {
 
 struct duration {
     enum duration_unit unit;
-    long value;
+    long long value;
 };
 
 struct config *config_load(const char *path, char **errmsg);

@@ -197,6 +197,7 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
         /* happen when parsing root object */
         if (buf->offset == buf->length) {
             if (open_brace) {
+                config_destroy(object);
                 return config_error(buf, "close brace not found in the end.");
             }
             return object;
@@ -206,15 +207,21 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
         c = buf->buffer[buf->offset];
 
         if (c == '{' && open_brace == false) {
-            buf->offset += 1;
             open_brace = true;
-        } else if (c == '}') {
             buf->offset += 1;
-            return object;
+        } else if (c == '}') {
+            if (open_brace) {
+                buf->offset += 1;
+                return object;
+            } else {
+                config_destroy(object);
+                return config_error(buf, "unexpected close brace.");
+            }
         } else if (c == ',') {
             if (has_fields) {
                 buf->offset += 1;
             } else {
+                config_destroy(object);
                 return config_error(buf, "comma appears before first element of object.");
             }
         } else {
@@ -228,6 +235,8 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
             config_skip_inline(buf, SKIP_WHITESPACE);
 
             if (buf->offset == buf->length || (buf->buffer[buf->offset] != '=' && buf->buffer[buf->offset] != ':')) {
+                free(key);
+                config_destroy(object);
                 return config_error(buf, "can't find any separator of '=' or ':'.");
             }
 
@@ -272,7 +281,7 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
 
             size_t start = 0, end = 0;
             bool quote = false;
-            char *pk;
+            char *pk = NULL;
             struct map *curr = object->value;
 
             for (int i = 0; i < wcslen(key); i++) {
@@ -304,6 +313,7 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
             pk = wcs_to_bs(key + start, end - start);
             if (map_has(curr, pk)) {
                 free(key);
+                free(pk);
                 config_destroy(value);
                 config_destroy(object);
                 buf->offset = key_start;
@@ -673,6 +683,8 @@ static struct config *config_parse_duration(struct config_parse_buffer *buf) {
     config_skip_inline(buf, SKIP_WHITESPACE | SKIP_COMMENT);
     if (buf->offset != buf->length && buf->buffer[buf->offset] != '\n' && buf->buffer[buf->offset] != ',' &&
         buf->buffer[buf->offset] != ']' && buf->buffer[buf->offset] != '}') {
+        free(value);
+        free(unit);
         buf->offset = offset;
         return NULL;
     }
@@ -853,6 +865,7 @@ static void config_dumps_internal(struct config *config, int level) {
             map_get(config->value, key->data, &data);
             config_dumps_internal(data, level + 1);
         }
+        list_destroy(keys);
         for (int i = 1; i < level; i++) {
             printf("    ");
         }
@@ -905,16 +918,18 @@ void config_dumps(struct config *config) {
 
 void config_destroy(struct config *config) {
     if (config == NULL) return;
-    if (config->type == CONFIG_OBJECT_TYPE  ) {
+    if (config->type == CONFIG_OBJECT_TYPE) {
         struct list *key, *keys = map_keys(config->value);
         key = keys;
         while (key = list_next(keys, key)) {
-            void *data;
-            map_get(config->value, key->data, &data);
-            config_destroy(data);
+            void *orig_key, *orig_data;
+            map_remove(config->value, list_data(key), &orig_key, &orig_data);
+            free(orig_key);
+            config_destroy(orig_data);
         }
-        list_destroy(keys);
         map_destroy(config->value);
+        list_destroy(keys);
+        free(config);
     } else if (config->type == CONFIG_ARRAY_TYPE) {
         struct list *p, *vs = config->value;
         p = vs;
@@ -922,6 +937,7 @@ void config_destroy(struct config *config) {
             config_destroy(p->data);
         }
         list_destroy(vs);
+        free(config);
     } else if (config->type == CONFIG_STRING_TYPE ||
                config->type == CONFIG_INTEGER_TYPE ||
                config->type == CONFIG_DOUBLE_TYPE ||

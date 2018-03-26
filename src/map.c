@@ -441,4 +441,5 @@ static void map_destroy_internal(struct map_entry *entry) {
  */
 void map_destroy(struct map *map) {
     map_destroy_internal(map->entries);
+    free(map);
 }
