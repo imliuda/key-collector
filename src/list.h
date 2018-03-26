@@ -9,6 +9,7 @@ struct list {
 
 struct list *list_new();
 struct list *list_node(void *data);
+void *list_data(struct list *node);
 void list_prepend(struct list *list, struct list *node);
 void list_append(struct list *list, struct list *node);
 void list_insert_before(struct list *cur, struct list *node);

@@ -13,6 +13,9 @@ struct config_parse_buffer {
     wchar_t *buffer;
     size_t offset;
     size_t length;
+    size_t err_line;
+    size_t err_col;
+    char *err_msg;
 };
 
 enum config_type {
@@ -45,9 +48,11 @@ struct duration {
     long value;
 };
 
-struct config *config_load(const char *path);
+struct config *config_load(const char *path, char **errmsg);
 void config_dumps(struct config *config);
+void config_destroy(struct config *config);
 struct config *config_get_object(struct config *config, const char *key);
+struct list *config_get_object_keys(struct config *config);
 struct config *config_get_array(struct config *config, const char *key);
 const char *config_get_string(struct config *config, const char *key, const char *def);
 long long config_get_integer(struct config *config, const char *key, long long def);

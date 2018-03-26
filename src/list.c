@@ -22,6 +22,10 @@ struct list *list_node(void *data) {
     return node;
 }
 
+void *list_data(struct list *node) {
+    return node->data;
+}
+
 void list_prepend(struct list *list, struct list *node) {
     list->next->prev = node;
     node->prev = list;

@@ -11,7 +11,12 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    struct config *config = config_load("./test_config.conf");
+    char *errmsg;
+    struct config *config = config_load("./test_config.conf", &errmsg);
+    if (!config) {
+        fprintf(stderr, "%s\n", errmsg);
+        exit(EXIT_FAILURE);
+    }
     config_dumps(config);
     printf("a.s: %s\n", config_get_string(config, "a.s", "default"));
     printf("a.i: %ld\n", config_get_integer(config, "a.i", 10));
@@ -23,4 +28,11 @@ int main() {
     config_dumps(object);
     struct config *array = config_get_array(config, "a.a");
     config_dumps(array);
+    struct list *p, *keys = config_get_object_keys(config);
+    p = keys;
+    printf("keys: ");
+    while(p = list_next(keys, p)) {
+        printf("%s ", list_data(p));
+    }
+    printf("\n");
 }

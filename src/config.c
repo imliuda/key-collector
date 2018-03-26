@@ -100,19 +100,13 @@ char *wcs_to_bs(wchar_t buf[], size_t len) {
     return str;
 }
 
-static void config_error(struct config_parse_buffer *buf, char *msg) {
-    size_t start = buf->offset, end = buf->offset, line_num = 1;
+static struct config *config_error(struct config_parse_buffer *buf, const char *msg) {
+    size_t start = buf->offset, line_num = 1, col;
     while (start > 0) {
         if (buf->buffer[start - 1] == '\n') {
             break;
         }
         start--;
-    }
-    while (end < buf->length) {
-        if (buf->buffer[end] == '\n') {
-            break;
-        }
-        end++;
     }
     int i = start;
     while (i >= 0) {
@@ -121,9 +115,10 @@ static void config_error(struct config_parse_buffer *buf, char *msg) {
         }
         i--;
     }
-    char *line = wcs_to_bs(buf->buffer + start, end - start);
-    fprintf(stderr, "configuration parsing error in line %d:\n%s\n%s\n", line_num, line, msg);
-    exit(1);
+    buf->err_line = line_num;
+    buf->err_col = buf->offset - start + 1;
+    buf->err_msg = strdup(msg);
+    return NULL;
 }
 
 
@@ -139,6 +134,7 @@ static wchar_t *config_parse_key(struct config_parse_buffer *buf) {
             break;
         } else if (buf->buffer[buf->offset] == '\n') {
             config_error(buf, "object key can't expand multi-line.");
+            return NULL;
         } else {
             if (!config_is_whitespace(buf->buffer[buf->offset])) end++;
             buf->offset++;
@@ -146,23 +142,40 @@ static wchar_t *config_parse_key(struct config_parse_buffer *buf) {
     }
     if (start == end) {
         config_error(buf, "object key can't be empty.");
+        return NULL;
     }
 
-    if (buf->buffer[start] == '.' || buf->buffer[end - 1] == '.')
+    if (buf->buffer[start] == '.' || buf->buffer[end - 1] == '.') {
         config_error(buf, "key's first and last character can't be '.'.");
+        return NULL;
+    }
 
     bool quote = false, match = false;
     for (size_t i = start; i < end; i++) {
         if (buf->buffer[i] == '"') {
-            if (match) config_error(buf, "additional quotation mark."); 
+            if (match) {
+                config_error(buf, "additional quotation mark."); 
+                return NULL;
+            }
             if (!quote) quote = true;
             else match = true;
-            if (!match && i != start && buf->buffer[i - 1] != '.')
+            if (!match && i != start && buf->buffer[i - 1] != '.') {
                 config_error(buf, "expecting '.' before start quotation mark.");
-            if (match && i != end - 1 && buf->buffer[i + 1] != '.')
+                return NULL;
+            }
+            if (match && i != end - 1 && buf->buffer[i + 1] != '.') {
                 config_error(buf, "expecting '.' after end quotation mark.");
+                return NULL;
+            }
         }
     }
+
+    if (quote && !match) {
+        buf->offset = end;
+        config_error(buf, "expecting close quotation mark.");
+        return NULL;
+    }
+
     wchar_t *key = malloc((end - start + 1) * sizeof(wchar_t));
     memcpy(key, buf->buffer + start, (end - start) * sizeof(wchar_t));
     key[end - start] = L'\0';
@@ -185,7 +198,7 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
         /* happen when parsing root object */
         if (buf->offset == buf->length) {
             if (open_brace) {
-                config_error(buf, "close brace not found in the end.");
+                return config_error(buf, "close brace not found in the end.");
             }
             return object;
         }
@@ -203,15 +216,20 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
             if (has_fields) {
                 buf->offset += 1;
             } else {
-                config_error(buf, "comma appears before first element of object.");
+                return config_error(buf, "comma appears before first element of object.");
             }
         } else {
+            size_t key_start = buf->offset;
             wchar_t *key = config_parse_key(buf);
+            if (key == NULL) {
+                config_destroy(object);
+                return NULL;
+            }
 
             config_skip_inline(buf, SKIP_WHITESPACE);
 
             if (buf->offset == buf->length || (buf->buffer[buf->offset] != '=' && buf->buffer[buf->offset] != ':')) {
-                config_error(buf, "can't find any separator of '=' or ':'.");
+                return config_error(buf, "can't find any separator of '=' or ':'.");
             }
 
             // found separator
@@ -219,16 +237,20 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
             config_skip_inline(buf, SKIP_WHITESPACE | SKIP_COMMENT);
 
             if (buf->offset == buf->length) {
-                config_error(buf, "can't find object value.");
+                return config_error(buf, "can't find object value.");
             }
 
             while (buf->offset < buf->length) {
                 c = buf->buffer[buf->offset];
 
                 if (c == '\n') {
-                    config_error(buf, "value must start in the same line with key.");
+                    free(key);
+                    config_destroy(object);
+                    return config_error(buf, "value must start in the same line with key.");
                 } else if (c == ',') {
-                    config_error(buf, "value can't be empty.");
+                    free(key);
+                    config_destroy(object);
+                    return config_error(buf, "value can't be empty.");
                 } else if (c == '{') {
                     value = config_parse_object(buf);
                     break;
@@ -241,13 +263,20 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
                 }
             }
 
+            if (value == NULL) {
+                config_destroy(object);
+                return config_error(buf, "unknown value type.");
+            }
+
             size_t start = 0, end = 0;
             bool quote = false;
             char *pk;
             struct map *curr = object->value;
+            printf("curr: %x, obj: %x\n", curr, object);
             for (int i = 0; i < wcslen(key); i++) {
                 if (key[i] == '.' && quote == false) {
                     pk = wcs_to_bs(key + start, end - start);
+                    printf("pk: %s\n", pk);
                     if (!map_has(curr, pk)) {
                         struct config *child = malloc(sizeof(struct config));
                         child->type = CONFIG_OBJECT_TYPE;
@@ -255,6 +284,9 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
                         map_add(curr, pk, child);
                         curr = child->value;
                     } else {
+                        struct config *child;
+                        map_get(curr, pk, (void **)&child);
+                        curr = child->value;
                         free(pk);
                     }
                     start = i + 1;
@@ -268,11 +300,16 @@ static struct config *config_parse_object(struct config_parse_buffer *buf) {
                 }
             }
             pk = wcs_to_bs(key + start, end - start);
-            if (map_has(curr, pk))
-                config_error(buf, "duplicated key.");
-            else
-                map_add(curr, pk, value);
+            if (map_has(curr, pk)) {
+                free(key);
+                free(value);
+                config_destroy(object);
 
+                buf->offset = key_start;
+                return config_error(buf, "duplicated key.");
+            } else {
+                map_add(curr, pk, value);
+            }
             free(key);
             has_fields = true;
         }
@@ -307,19 +344,23 @@ static struct config *config_parse_array(struct config_parse_buffer *buf) {
             if (has_values) {
                 buf->offset++;
             } else {
-                config_error(buf, "comma appears before first element of array.");
+                config_destroy(array);
+                return config_error(buf, "comma appears before first element of array.");
             }
         } else if (buf->buffer[buf->offset] == '{') {
-            printf("array object\n");
             struct config *object = config_parse_object(buf);
             list_append(array->value, list_node(object));
             has_values = true;
         } else {
             if (buf->offset == buf->length) {
-                config_error(buf, "no close bracket.");
+                config_destroy(array);
+                return config_error(buf, "no close bracket.");
             }
-
             struct config *simple = config_parse_simple(buf);
+            if (simple == NULL) {
+                config_destroy(array);
+                return NULL;
+            }
             list_append(array->value, list_node(simple));
             has_values = true;
         }
@@ -333,7 +374,7 @@ static struct config *config_parse_array(struct config_parse_buffer *buf) {
  */
 static struct config *config_parse_simple(struct config_parse_buffer *buf) {
     wchar_t c;
-    struct config *simple = NULL;
+    struct config *simple;
 
     if (simple = config_parse_string(buf)) {
         return simple;
@@ -343,8 +384,9 @@ static struct config *config_parse_simple(struct config_parse_buffer *buf) {
         return simple;
     } else if (simple = config_parse_duration(buf)) {
         return simple;
+    } else {
+        return NULL;
     }
-    config_error(buf, "unknown value type.");
 }
 
 /*
@@ -356,13 +398,18 @@ static struct config *config_parse_string(struct config_parse_buffer *buf) {
     size_t start = buf->offset, end = buf->offset, offset = buf->offset;
     bool match = false;
 
-    if (buf->buffer[buf->offset] != '"') return NULL;
+    if (buf->buffer[buf->offset] != '"') {
+        buf->offset = offset;
+        return NULL;
+    }
+
     buf->offset++;
 
     while (buf->offset < buf->length) {
         /* read end of line or object fields separator ',' */
         if (buf->buffer[buf->offset] == '\n' && !match) {
-            config_error(buf, "string quotes don't match.");
+            buf->offset = offset;
+            return NULL;
         } else if (buf->buffer[buf->offset] == '"' && buf->buffer[buf->offset - 1] != '\\'){
             end = ++buf->offset;
             break;
@@ -392,7 +439,9 @@ static struct config *config_parse_string(struct config_parse_buffer *buf) {
         } else if (*p == 'u' && (p > str) && *(p - 1) == '\\') {
             p++;
             if (*p == '\0' || *(p + 1) == '\0' || *(p + 2) == '\0' || *(p + 3) == '\0') {
-                config_error(buf, "unicode escape sequence must have 4 hexadecimal digit.");
+                free(new);
+                buf->offset = offset;
+                return NULL;
             }
 
             char *e, us[5];
@@ -400,13 +449,17 @@ static struct config *config_parse_string(struct config_parse_buffer *buf) {
             us[4] = '\0';
             wchar_t wc = strtol(us, &e, 16);
             if (*e != '\0') {
-                config_error(buf, "unicode escape sequence must have 4 hexadecimal digit.");
+                free(new);
+                buf->offset = offset;
+                return NULL;
             }
 
             char bytes[MB_CUR_MAX];
             int nb = wcrtomb(bytes, wc, NULL);
             if (nb == (size_t) -1) {
-                config_error(buf, "invalid unicode escape sequence.");
+                free(new);
+                buf->offset = offset;
+                return NULL;
             }
             if (index + nb > size) {
                 new = realloc(new, size + 64);
@@ -451,7 +504,10 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
         buf->offset++;
     }
 
-    if (buf->offset == buf->length) return NULL;
+    if (buf->offset == buf->length) {
+        buf->offset = offset;
+        return NULL;
+    }
 
     if (buf->buffer[buf->offset] == '0') {
         buf->offset++;
@@ -466,11 +522,15 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
         } else if (iswdigit(buf->buffer[buf->offset])) {
             base = 8;
         } else {
+            buf->offset = offset;
             return NULL;
         }
     }
 
-    if (buf->offset == buf->length && base == 16) return NULL;
+    if (buf->offset == buf->length && base == 16) {
+        buf->offset = offset;
+        return NULL;
+    }
 
     /*
      * 1. buf->offset == buf->length && (base == 8 || base == 10)
@@ -483,6 +543,7 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
     while (buf->offset < buf->length) {
         if (buf->buffer[buf->offset] == '.') {
             if (dot_parsed) {
+                buf->offset = offset;
                 return NULL;
             } else {
                 buf->offset++;
@@ -523,11 +584,11 @@ static struct config *config_parse_number(struct config_parse_buffer *buf) {
     printf("number value: %s\n", str);
     if (type == CONFIG_INTEGER_TYPE) {
         uint64_t *value = malloc(sizeof(uint64_t));
-        *value = strtoll(str, NULL, base);
+        *value = strtoll(str, NULL, base) * sign;
         simple->value = value;
     } else {
         double *value = malloc(sizeof(double));
-        *value = atof(str);
+        *value = atof(str) * sign;
         simple->value = value;
     }
     free(str);
@@ -647,7 +708,17 @@ static struct config *config_parse_duration(struct config_parse_buffer *buf) {
     return simple;
 }
 
-struct config *config_parse(char *buf, size_t len) {
+/*
+ * parse utf-8 encoded byte string to config object.
+ *
+ * @param[input] buf utf-8 encoded byte string.
+ * @param len byte string length.
+ * @param[output] errmsg error message.
+ * @return if config parse success, return config object, and errmsg
+ *         set to NULL. if parse failed, return NULL, and set errmsg
+ *         to the reason. calling function need to free errmsg.
+ */
+struct config *config_parse(char *buf, size_t len, char **errmsg) {
     /* remove utf-8 bom if it has */
     if (len >= 3 && buf[0] == 0xef && buf[1] == 0xbb && buf[2] == 0xbf) {
         buf += 3;
@@ -663,8 +734,10 @@ struct config *config_parse(char *buf, size_t len) {
     while (len > 0) {
         if ((nbytes = mbrtowc(&wc, tbuf, len, &mbs)) > 0) {
             if (nbytes >= (size_t) -2) {
-                fprintf(stderr, "config file encoding error.\n");
-                exit(1);
+                if (errmsg != NULL) {
+                    *errmsg = strdup("config file encoding error.");
+                    return NULL;
+                }
             }
             if (wcslen >= wbuflen) {
                 wbuflen += 64;
@@ -674,28 +747,63 @@ struct config *config_parse(char *buf, size_t len) {
             len -= nbytes;
             tbuf += nbytes;
         } else {
-            fprintf(stderr, "invalid '\0' character in config file.\n");
-            exit(1);
+            if (errmsg != NULL)
+            *errmsg = strdup("invalid '\0' character in config file.");
+            return NULL;
         }
     }
 
-    struct config_parse_buffer buffer = {wbuf, 0, wcslen};
+    struct config_parse_buffer buffer;
+    buffer.buffer = wbuf;
+    buffer.offset = 0;
+    buffer.length = wcslen;
+
     struct config *config = config_parse_object(&buffer);
+
     free(wbuf);
-    return config;
+
+    if (config != NULL) {
+        *errmsg = NULL;
+        return config;
+    }
+
+    if (errmsg != NULL) {
+        char *errfmt = "line %ld column %ld: %s";
+        size_t errlen = snprintf(NULL, 0, errfmt, buffer.err_line, buffer.err_col, buffer.err_msg);
+        errlen++;
+        *errmsg = malloc(errlen);
+        snprintf(*errmsg, errlen, errfmt, buffer.err_line, buffer.err_col, buffer.err_msg);
+        free(buffer.err_msg);
+    }
+
+    return NULL;
 }
 
-struct config *config_load(const char *path) {
+/*
+ * load config from file.
+ *
+ * @param path file path.
+ * @param[output] errmsg error message.
+ * @return if config parse success, return config object, and errmsg
+ *         set to NULL. if parse failed, return NULL, and set errmsg
+ *         to the reason. calling function need to free errmsg.
+ */
+struct config *config_load(const char *path, char **errmsg) {
     /* get file content to a buf */
     FILE *fp = fopen(path, "r");
     if (!fp) {
-        fprintf(stderr, "unable to open config file: %s\n", path);
-        exit(1);
+        char *errfmt = "unable to open config file: %s";
+        size_t errlen = snprintf(NULL, 0, errfmt, path);
+        errlen++;
+        *errmsg = malloc(errlen);
+        snprintf(*errmsg, errlen, errfmt, path);
+        return NULL;
     }
     flock(fileno(fp), LOCK_EX);
     fseek(fp, 0, SEEK_END);
     long len = ftell(fp);
     fseek(fp, 0, SEEK_SET);
+
     unsigned char *buf = malloc(len);
     int nread = 0, total = 0;
     while(!feof(fp)) {
@@ -705,9 +813,26 @@ struct config *config_load(const char *path) {
     flock(fileno(fp), LOCK_UN);
     fclose(fp);
 
-    struct config *config = config_parse(buf, len);
+    char *errp;
+    struct config *config = config_parse(buf, len, &errp);
+
     free(buf);
-    return config;
+
+    if (config != NULL) {
+        *errmsg = NULL;
+        return config;
+    }
+
+    if (errmsg != NULL) {
+        char *errfmt = "config load error in file \"%s\":\n%s";
+        size_t errlen = snprintf(NULL, 0, errfmt, path, errp);
+        errlen++;
+        *errmsg = malloc(errlen);
+        snprintf(*errmsg, errlen, errfmt, path, errp);
+        free(errp);
+    }
+
+    return NULL;
 }
 
 static void config_dumps_internal(struct config *config, int level) {
@@ -775,6 +900,38 @@ void config_dumps(struct config *config) {
     config_dumps_internal(config, 1);
 }
 
+void config_destroy(struct config *config) {
+    if (config == NULL) return;
+    if (config->type == CONFIG_OBJECT_TYPE  ) {
+        struct list *key, *keys = map_keys(config->value);
+        key = keys;
+        while (key = list_next(keys, key)) {
+            void *data;
+            map_get(config->value, key->data, &data);
+            config_destroy(data);
+            free(key);
+        }
+        map_destroy(config->value);
+    } else if (config->type == CONFIG_ARRAY_TYPE) {
+        struct list *p, *vs = config->value;
+        p = vs;
+        while (p = list_next(vs, p)) {
+            config_destroy(p->data);
+        }
+        list_destroy(vs);
+    } else if (config->type == CONFIG_STRING_TYPE ||
+               config->type == CONFIG_INTEGER_TYPE ||
+               config->type == CONFIG_DOUBLE_TYPE ||
+               config->type == CONFIG_BOOLEAN_TYPE ||
+               config->type == CONFIG_DURATION_TYPE) {
+        free(config->value);
+    } else {
+        fprintf(stderr, "config destroy error, if you use config_load "
+                        "series functions, there may be a bug.\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
 static struct config *config_get(struct config *config, const char *key) {
     if (config == NULL || config->type != CONFIG_OBJECT_TYPE) return NULL;
     bool quote = false;
@@ -817,6 +974,13 @@ struct config *config_get_object(struct config *config, const char *key) {
         return NULL;
     }
     return value;
+}
+
+struct list *config_get_object_keys(struct config *config) {
+    if (!config || config->type != CONFIG_OBJECT_TYPE) {
+        return NULL;
+    }
+    return map_keys(config->value);
 }
 
 struct config *config_get_array(struct config *config, const char *key) {
