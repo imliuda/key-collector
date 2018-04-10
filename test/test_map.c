@@ -15,15 +15,15 @@ struct print_node {
     int level;
 };
 
-void print_map_build(struct map_entry *entry, struct list *nodes, int level) {
+struct list *print_map_build(struct map_entry *entry, int level) {
     if (entry == NULL)
-    return;
+    return NULL;
 
     struct print_node *node = malloc(sizeof(struct print_node));
     char red[] = " R";
     char black[] = " B";
 
-    print_map_build(entry->left, nodes, level + 1);
+    struct list *nodes = print_map_build(entry->left, level + 1);
 
     node->level = level;
     node->key = malloc(strlen(entry->key) + 3);
@@ -32,44 +32,43 @@ void print_map_build(struct map_entry *entry, struct list *nodes, int level) {
         memcpy(node->key + strlen(entry->key), black, 3);
     else
     memcpy(node->key + strlen(entry->key), red, 3);
-    list_append(nodes, list_node(node));
+    nodes = list_append(nodes, node);
 
-    print_map_build(entry->right, nodes, level + 1);
+    nodes = list_extend(nodes, print_map_build(entry->right, level + 1));
 }
 
 void print_map(struct map *map) {
-    struct list *p, *nodes = list_new();
+    struct list *p;
     struct print_node *n;
     int padding, level;
 
-    print_map_build(map->entries, nodes, 0);
-
-    padding = 0;
-    p = nodes;
-    while (p = list_next(nodes, p)) {
-        n = p->data;
-        n->padding = padding;
-        padding += strlen(n->key);
-    };
+    struct list *nodes = print_map_build(map->entries, 0);
 
     level = 0;
     p = nodes;
-    while (p = list_next(nodes, p)) {
+    while (p) {
         n = p->data;
-        if (n->level > level)
+        if (n->level > level) {
                 level = n->level;
         }
-    
-        for (int i = 0; i < level + 1; i++) {
-            char *line = malloc(2048);
-            for(int j = 0; j < 2048; j++) {
-            line[j] = ' ';
-        }
+        p = list_next(p);
+    }
+
+    for (int cl = 0; cl <= level; cl++) {
         padding = 0;
-        p = nodes;
-        while (p = list_next(nodes, p)) {
+        for (p = nodes; p != NULL; p = list_next(p)) {
             n = p->data;
-            if (n->level != i)
+            n->padding = padding;
+            padding += strlen(n->key);
+        };
+
+        char *line = malloc(2048);
+        for(int j = 0; j < 2048; j++)
+            line[j] = ' ';
+
+        for(p = nodes; p != NULL; p = list_next(p)) {
+            n = p->data;
+            if (n->level != cl)
                 continue;
             memcpy(&line[n->padding], n->key, strlen(n->key));
         }
@@ -108,25 +107,25 @@ int main () {
 
     for (int i = 0; i < 15; i++) {
         char *s = random_str(5);
-        list_append(list, list_node(s));
+        list = list_append(list, s);
         printf("add: %s, return %d\n", s, map_add(map, s, s));
     }
     print_map(map);
     char *s1 = "1", *s2 = "2";
-    printf("get should true: %d\n", map_get(map, list_first(list)->data, (void **)&data));
-    printf("update should true: %d\n", map_update(map, list_first(list)->data, s1, (void **)&orig_data));
-    printf("updated %s, orig_data: %ld\n", list_first(list)->data, orig_data);
-    char *new_key = strdup(list_last(list)->data);
+    printf("get should true: %d\n", map_get(map, list_data(list), (void **)&data));
+    printf("update should true: %d\n", map_update(map, list_data(list), s1, (void **)&orig_data));
+    printf("updated %s, orig_data: %ld\n", list_data(list), orig_data);
+    char *new_key = strdup(list_data(list));
     printf("replace should true: %d\n", map_replace(map, new_key, s2, (void **)&orig_key, (void **)&orig_data));
     printf("replaced %s, orig_key: %ld, orig_data: %ld\n", new_key, orig_key, orig_data);
-    printf("has %s: %d, has NOWAY: %d\n", list_first(list)->data, map_has(map, list_first(list)->data), map_has(map, "NOWAY"));
+    printf("has %s: %d, has NOWAY: %d\n", list_data(list), map_has(map, list_data(list)), map_has(map, "NOWAY"));
     print_map(map);
     // remove
     printf("AFTER remove:\n");
     struct list *p = list;
     for (int i = 0; i < 7; i++) {
-        p = list_next(list, p);
         printf("remove: %s, return %d\n", p->data, map_remove(map, p->data, (void *)&orig_key, (void *)&orig_data));
         print_map(map);
+        p = list_next(p);
     }
 }

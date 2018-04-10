@@ -410,12 +410,15 @@ bool map_get(struct map *map, void *key, void **data) {
     return false;
 }
 
-static void map_keys_internal(struct list *keys, struct map_entry *entry) {
+static struct list *map_keys_internal(struct map_entry *entry) {
     if (entry) {
-        map_keys_internal(keys, entry->left);
-        list_append(keys, list_node(entry->key));
-        map_keys_internal(keys, entry->right);
+        struct list *list = list_new();
+        list = list_extend(list, map_keys_internal(entry->left));
+        list = list_append(list, entry->key);
+        list = list_extend(list, map_keys_internal(entry->right));
+        return list;
     }
+    return list_new();
 }
 
 /*
@@ -424,9 +427,7 @@ static void map_keys_internal(struct list *keys, struct map_entry *entry) {
  * @param[output] list stores the keys, must be freed by user after use.
  */
 struct list *map_keys(struct map *map) {
-    struct list *keys = list_new();
-    map_keys_internal(keys, map->entries);
-    return keys;
+    return map_keys_internal(map->entries);
 }
 
 static void map_destroy_internal(struct map_entry *entry) {

@@ -29,10 +29,11 @@ int main() {
     struct config *array = config_get_array(config, "a.a");
     config_dumps(array);
     struct list *p, *keys = config_get_object_keys(config);
-    p = keys;
     printf("keys: ");
-    while(p = list_next(keys, p)) {
+    p = keys;
+    while(p) {
         printf("%s ", list_data(p));
+        p = list_next(p);
     }
     list_destroy(keys);
     printf("\n");
