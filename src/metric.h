@@ -5,54 +5,51 @@
 
 #include "map.h"
 
-#define EQ_NAME     1
-#define EQ_TAGS     2
-#define EQ_FIELDS   4
-#define EQ_TIME     8
+#define METRIC_EQUAL_NAME     1
+#define METRIC_EQUAL_TAGS     2
+#define METRIC_EQUAL_FIELDS   4
+#define METRIC_EQUAL_TIME     8
 
-enum metric_vtype { FLOAT, INTEGER, STRING, BOOLEAN};
-enum metric_precision {NSEC, USEC, MSEC, SECOND, MINUTE, HOUR};
+enum field_value_type { 
+    FIELD_STRING_TYPE,
+    DIELD_INTEGER_TYPE,
+    FIELD_FLOAT_TYPE,
+    FIELD_BOOLEAN_TYPE
+};
 
-struct metric_value {
-    enum metric_vtype type;
+struct field_value {
+    enum field_value_type type;
     union {
-        double fv;
-        int64_t iv;
-        char *sv;
-        bool bv;
+        double dbl_v;
+        int64_t int_v;
+        char *str_v;
+        bool bool_v;
     } value;
-}
-
-struct metric_time {
-    struct timespec time;
-    enum precision precision;
-}
+};
 
 struct metric {
     char *name;
     struct map *tags;
     struct map *fields;
-    struct metric_time time;
+    time_t time;
 };
 
 struct metric *metric_new();
-void metric_new_full(const char *name, struct map *tags, struct map *fields, struct metric_time time);
+void metric_destroy(struct metric *metric);
 struct list *metric_parse(const char *buf);
-char *metric_serialize(struct list *metrics);
+const char *metric_serialize(struct list *metrics);
 bool metric_equal(struct metric *metric1, struct metric *metric2, int mode);
-char *metric_get_name(struct metric *metric);
+const char *metric_get_name(struct metric *metric);
 void metric_set_name(struct metric *metric, char *name);
-struct list * metric_tags(struct metric *metric);
+struct list * metric_tag_keys(struct metric *metric);
 void metric_add_tag(struct metric *metric, const char *tag, const char *value);
 char *metric_get_tag(struct metric *metric, const char *tag);
-bool metric_update_tag(struct metric *metric, const char *tag, const char *value);
 bool metric_remove_tag(struct metric *metric, const char *tag);
-struct list *metric_fields(struct metric *metric);
-void metric_add_field(struct metric *metric, const char *field, struct metric_value *value);
-struct metric_value *metric_get_field(struct metric *metric, const char *field);
-bool metric_update_field(struct metric *metric, const char *field, struct metric_value *value);
-bool metric_remove_field(struct metric *metric, const char *field);
-struct metric_time metric_get_time(struct metric *metric);
-void metric_set_time(struct metric *metric, struct metric_time time);
+struct list *metric_field_keys(struct metric *metric);
+void metric_add_field(struct metric *metric, const char *field, struct field_value *value);
+struct field_value *metric_get_field(struct metric *metric, const char *field);
+bool metric_remove_field(struct metric *metric, const char *key);
+time_t metric_get_time(struct metric *metric);
+void metric_set_time(struct metric *metric, time_t time);
 
 #endif
