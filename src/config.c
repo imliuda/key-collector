@@ -346,7 +346,7 @@ static struct config *config_parse_array(struct config_parse_buffer *buf) {
                     config_destroy(array);
                     return NULL;
                 }
-                list_append(array->value, list_node(subarray));
+                array->value = list_append(array->value, subarray);
                 has_values = true;
             } else {
                 open_bracket = true;
@@ -368,7 +368,7 @@ static struct config *config_parse_array(struct config_parse_buffer *buf) {
                 config_destroy(array);
                 return NULL;
             }
-            list_append(array->value, list_node(object));
+            array->value = list_append(array->value, object);
             has_values = true;
         } else {
             if (buf->offset == buf->length) {
@@ -380,7 +380,7 @@ static struct config *config_parse_array(struct config_parse_buffer *buf) {
                 config_destroy(array);
                 return NULL;
             }
-            list_append(array->value, list_node(simple));
+            array->value = list_append(array->value, simple);
             has_values = true;
         }
     }
@@ -856,7 +856,7 @@ static void config_dumps_internal(struct config *config, int level) {
         printf("{\n");
         struct list *key, *keys = map_keys(config->value);
         key = keys;
-        while (key = list_next(keys, key)) {
+        while (key) {
             for (int i = 0; i < level; i++) {
                 printf("    ");
             }
@@ -864,6 +864,7 @@ static void config_dumps_internal(struct config *config, int level) {
             void *data;
             map_get(config->value, key->data, &data);
             config_dumps_internal(data, level + 1);
+            key = list_next(key);
         }
         list_destroy(keys);
         for (int i = 1; i < level; i++) {
@@ -874,11 +875,12 @@ static void config_dumps_internal(struct config *config, int level) {
         struct list *p, *vs = config->value;
         p = vs;
         printf("[\n");
-        while (p = list_next(vs, p)) {
+        while (p) {
             for (int i = 0; i < level; i++) {
                 printf("    ");
             }
             config_dumps_internal(p->data, level + 1);
+            p = list_next(p);
         }
         for (int i = 1; i < level; i++) {
             printf("    ");
@@ -921,11 +923,12 @@ void config_destroy(struct config *config) {
     if (config->type == CONFIG_OBJECT_TYPE) {
         struct list *key, *keys = map_keys(config->value);
         key = keys;
-        while (key = list_next(keys, key)) {
+        while (key) {
             void *orig_key, *orig_data;
             map_remove(config->value, list_data(key), &orig_key, &orig_data);
             free(orig_key);
             config_destroy(orig_data);
+            key = list_next(key);
         }
         map_destroy(config->value);
         list_destroy(keys);
@@ -933,8 +936,9 @@ void config_destroy(struct config *config) {
     } else if (config->type == CONFIG_ARRAY_TYPE) {
         struct list *p, *vs = config->value;
         p = vs;
-        while (p = list_next(vs, p)) {
+        while (p) {
             config_destroy(p->data);
+            p = list_next(p);
         }
         list_destroy(vs);
         free(config);
