@@ -1,6 +1,8 @@
 #ifndef __OSCLT_JSON_H__
 #define __OSCLT_JSON_H__
 
+#include <stdbool.h>
+
 enum json_type {
     JSON_OBJECT_TYPE,
     JSON_ARRAY_TYPE,
@@ -15,11 +17,11 @@ enum json_type {
 struct json {
     enum json_type type;
     void *data;
-}
+};
 
 struct json_array {
     size_t size;
-    struct json *data;
+    struct json **data;
 };
 
 #define json_typeof(json)      ((json)->type)
@@ -42,7 +44,7 @@ struct json *json_false();
 struct json *json_null();
 
 struct json *json_loads(const char *s);
-const char *json_dumps(struct json *j);
+char *json_dumps(struct json *j);
 bool json_equal(struct json *j1, struct json *j2);
 void json_destroy(struct json *j);
 
