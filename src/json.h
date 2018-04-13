@@ -17,6 +17,7 @@ enum json_type {
 struct json {
     enum json_type type;
     void *data;
+    int nref;
 };
 
 struct json_array {
@@ -42,6 +43,7 @@ struct json *json_real(double value);
 struct json *json_true();
 struct json *json_false();
 struct json *json_null();
+struct json *json_ref(struct json *j);
 
 struct json *json_loads(const char *s);
 char *json_dumps(struct json *j);

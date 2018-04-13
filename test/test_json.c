@@ -22,25 +22,25 @@ int main() {
     json_object_add(jco, "child string", js);
 
     // add some values to child array
-    json_array_append(jca, ji);
+    json_array_append(jca, jt);
     json_array_append(jca, jf);
     json_array_append(jca, jr);
 
     // add some values to array
-    json_array_append(ja, js);
-    json_array_append(ja, jt);
+    json_array_append(ja, json_ref(js));
+    json_array_append(ja, json_ref(jt));
     json_array_append(ja, jca);
-    json_array_append(ja, jn);
-    json_array_append(ja, ji);
+    json_array_append(ja, json_ref(jn));
+    json_array_append(ja, json_ref(ji));
 
     // add diffrent type values to object
     json_object_add(jo, "array", ja);
-    json_object_add(jo, "string", js);
-    json_object_add(jo, "integer", ji);
-    json_object_add(jo, "real", jr);
-    json_object_add(jo, "true", jt);
-    json_object_add(jo, "false", jf);
-    json_object_add(jo, "null", jn);
+    json_object_add(jo, "string", json_ref(js));
+    json_object_add(jo, "integer", json_ref(ji));
+    json_object_add(jo, "real", json_ref(jr));
+    json_object_add(jo, "true", json_ref(jt));
+    json_object_add(jo, "false", json_ref(jf));
+    json_object_add(jo, "null", json_ref(jn));
 
     json_object_add(jo, "child object", jco);
 
