@@ -2,6 +2,8 @@
 #include <stddef.h>
 #include <string.h>
 #include <ctype.h>
+#include <wchar.h>
+#include <iconv.h>
 
 #include "str.h"
 
@@ -70,5 +72,61 @@ void strbufextn(struct strbuf *buf, const char *str, size_t n) {
 }
 
 void strbufextf(struct strbuf *buf, const char *fmt, ...) {
+
+}
+
+struct wcsbuf *wcsbufnew(size_t blksz) {
+    struct wcsbuf *buf = malloc(sizeof(struct wcsbuf));
+    buf->wcs = malloc(blksz * sizeof(wchar_t));
+    buf->slen = 0;
+    buf->blen = blksz;
+    buf->blksz = blksz;
+    return buf;
+}
+
+void wcsbuffree(struct wcsbuf *buf) {
+    free(buf->wcs);
+    free(buf);
+}
+
+wchar_t *wcsbufwcs(struct wcsbuf *buf) {
+    return buf->wcs;
+}
+
+void wcsbufexts(struct wcsbuf *buf, wchar_t *str) {
+    int slen = wcslen(str);
+    if (slen >= (buf->blen - buf->slen)) {
+        buf->wcs = realloc(buf->wcs, (slen / buf->blksz + 1) * buf->blksz * sizeof(wchar_t));
+    }
+    wcsncpy(&buf->wcs[buf->slen], str, slen);
+    buf->slen += slen;
+    buf->wcs[buf->slen] = L'\0';
+}
+
+void wcsbufextn(struct wcsbuf *buf, wchar_t *str, size_t n) {
+    if (n >= (buf->blen - buf->slen)) {
+        buf->wcs = realloc(buf->wcs, (n / buf->blksz + 1) * buf->blksz * sizeof(wchar_t));
+    }
+    wcsncpy(&buf->wcs[buf->slen], str, n);
+    buf->slen += n;
+    buf->wcs[buf->slen] = L'\0';
+}
+
+wchar_t *strutf8dec(const char *s) {
+    iconv_t cd = iconv_open("WCHAR_T", "UTF-8");
+    size_t slen = strlen(s);
+
+    if (cd == (iconv_t) -1)
+        return NULL;
+
+    int i = 0;
+    while (i < slen) {
+        
+    }
+
+    iconv_close(cd);
+}
+
+const char *strutf8enc(wchar_t *s) {
 
 }

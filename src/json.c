@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stddef.h>
 
 #include "json.h"
 #include "map.h"
@@ -127,9 +128,22 @@ struct json *json_ref(struct json *j) {
 }
 
 /**
+ * space, horizontal tab, new line, carriage return
+ */
+static inline bool json_is_ws(wchar_t c) {
+    return c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d;
+}
+
+static inline bool json_is_ctrl(wchar_t c) {
+    return c >= 0x0 && c <= 0x1f;
+}
+
+/**
  * parse a json string to a json value.
  */
-struct json *json_loads(const char *s);
+struct json *json_loads(const char *s) {
+
+}
 
 void json_dumps_internal(struct json *j, struct strbuf *sb, int level, bool last) {
     if (j->type == JSON_OBJECT_TYPE) {
