@@ -25,6 +25,35 @@ struct json_array {
     struct json **data;
 };
 
+struct json_parser {
+    wchar_t *buffer;
+    size_t offset;
+    size_t length;
+};
+
+enum json_error_code {
+    JSON_ERROR_SUCCESS,
+    JSON_ERROR_UNKNOWN_VALUE,
+    JSON_ERROR_INVALID_ENCODING,
+    JSON_ERROR_EMPTY_JSON,
+    JSON_ERROR_INVALID_NAME,
+    JSON_ERROR_EXPECTING_NAME,
+    JSON_ERROR_EXPECTING_VALUE,
+    JSON_ERROR_EXPECTING_COMMA,
+    JSON_ERROR_UNNECESSARY_COMMA,
+    JSON_ERROR_EXPECTING_COLON
+};
+
+extern const char *json_error_text[];
+
+struct json_error {
+    enum json_error_code code;
+    const char *text;
+    size_t line;
+    size_t column;
+    size_t position;
+};
+
 #define json_typeof(json)      ((json)->type)
 #define json_is_object(json)   ((json) && json_typeof(json) == JSON_OBJECT_TYPE)
 #define json_is_array(json)    ((json) && json_typeof(json) == JSON_ARRAY_TYPE)
@@ -33,7 +62,13 @@ struct json_array {
 #define json_is_real(json)     ((json) && json_typeof(json) == JSON_REAL_TYPE)
 #define json_is_true(json)     ((json) && json_typeof(json) == JSON_TRUE_TYPE)
 #define json_is_false(json)    ((json) && json_typeof(json) == JSON_FALSE_TYPE)
+#define json_is_boolean(json)  (json_is_true(json) || json_is_false(json))
 #define json_is_null(json)     ((json) && json_typeof(json) == JSON_NULL_TYPE)
+
+#define json_string_value(json) (json->data)
+#define json_integer_value(json) (*(long long *)json->data)
+#define json_real_value(json) (*(double *)json->data)
+#define json_boolean_value(json) (*(bool *)json->data)
 
 struct json *json_object();
 struct json *json_array();
@@ -45,7 +80,7 @@ struct json *json_false();
 struct json *json_null();
 struct json *json_ref(struct json *j);
 
-struct json *json_loads(const char *s);
+struct json *json_loads(const char *s, struct json_error *error);
 char *json_dumps(struct json *j);
 bool json_equal(struct json *j1, struct json *j2);
 void json_destroy(struct json *j);

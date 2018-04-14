@@ -1,9 +1,11 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
 #include <ctype.h>
 #include <wchar.h>
 #include <iconv.h>
+#include <errno.h>
 
 #include "str.h"
 
@@ -39,6 +41,14 @@ void strtrim(char *str) {
     str;
 }
 
+wchar_t *wcsndup(wchar_t *s, size_t n) {
+    size_t len = wcsnlen(s, n);
+    wchar_t* wcs = malloc((len + 1) * sizeof(wchar_t));
+    wmemcpy(wcs, s, len);
+    wcs[len] = L'\0';
+    return wcs;
+}
+
 struct strbuf *strbufnew(size_t blksz) {
     struct strbuf *buf = malloc(sizeof(struct strbuf));
     buf->str = malloc(blksz);
@@ -68,7 +78,12 @@ void strbufexts(struct strbuf *buf, const char *str) {
 }
 
 void strbufextn(struct strbuf *buf, const char *str, size_t n) {
-
+    if (n >= (buf->blen - buf->slen)) {
+        buf->str = realloc(buf->str, (n / buf->blksz + 1) * buf->blksz);
+    }
+    strncpy(&buf->str[buf->slen], str, n);
+    buf->slen += n;
+    buf->str[buf->slen] = '\0';
 }
 
 void strbufextf(struct strbuf *buf, const char *fmt, ...) {
@@ -96,7 +111,7 @@ wchar_t *wcsbufwcs(struct wcsbuf *buf) {
 void wcsbufexts(struct wcsbuf *buf, wchar_t *str) {
     int slen = wcslen(str);
     if (slen >= (buf->blen - buf->slen)) {
-        buf->wcs = realloc(buf->wcs, (slen / buf->blksz + 1) * buf->blksz * sizeof(wchar_t));
+        buf->wcs = realloc(buf->wcs, (slen * sizeof(wchar_t) / buf->blksz + 1) * buf->blksz * sizeof(wchar_t));
     }
     wcsncpy(&buf->wcs[buf->slen], str, slen);
     buf->slen += slen;
@@ -105,7 +120,7 @@ void wcsbufexts(struct wcsbuf *buf, wchar_t *str) {
 
 void wcsbufextn(struct wcsbuf *buf, wchar_t *str, size_t n) {
     if (n >= (buf->blen - buf->slen)) {
-        buf->wcs = realloc(buf->wcs, (n / buf->blksz + 1) * buf->blksz * sizeof(wchar_t));
+        buf->wcs = realloc(buf->wcs, (n * sizeof(wchar_t) / buf->blksz + 1) * buf->blksz * sizeof(wchar_t));
     }
     wcsncpy(&buf->wcs[buf->slen], str, n);
     buf->slen += n;
@@ -114,19 +129,66 @@ void wcsbufextn(struct wcsbuf *buf, wchar_t *str, size_t n) {
 
 wchar_t *strutf8dec(const char *s) {
     iconv_t cd = iconv_open("WCHAR_T", "UTF-8");
-    size_t slen = strlen(s);
 
     if (cd == (iconv_t) -1)
         return NULL;
 
-    int i = 0;
-    while (i < slen) {
-        
-    }
+    struct wcsbuf *buf = wcsbufnew(64);
+    wchar_t wcs[64];
+    char *cwcs = (char *)wcs;
+    size_t outleft = 64 * sizeof(wchar_t);
+    size_t inleft = strlen(s);
 
+    while (inleft != 0) {
+        size_t nconv = iconv(cd, (char **)&s, &inleft, &cwcs, &outleft);
+        if (nconv == (size_t) -1) {
+            if (errno == E2BIG) {
+                wcsbufextn(buf, wcs, (64 * sizeof(wchar_t) - outleft) / sizeof(wchar_t));
+                outleft = 64 * sizeof(wchar_t);
+                cwcs = (char *)wcs;
+            } else {
+                iconv_close(cd);
+                wcsbuffree(buf);
+                return NULL;
+            }
+        }
+    }
+    wcsbufextn(buf, wcs, (64 * sizeof(wchar_t) - outleft) / sizeof(wchar_t));
     iconv_close(cd);
+    wchar_t *r = wcsdup(wcsbufwcs(buf));
+    wcsbuffree(buf);
+    return r;
 }
 
-const char *strutf8enc(wchar_t *s) {
+char *strutf8enc(const wchar_t *wcs) {
+    iconv_t cd = iconv_open("UTF-8", "WCHAR_T");
 
+    if (cd == (iconv_t) -1)
+        return NULL;
+
+    struct strbuf *buf = strbufnew(256);
+    char s[256];
+    char *cs = s;
+    size_t outleft = 256;
+    size_t inleft = wcslen(wcs) * sizeof(wchar_t);
+
+    while (inleft != 0) {
+        size_t nconv = iconv(cd, (char **)&wcs, &inleft, &cs, &outleft);
+        if (nconv == (size_t) -1) {
+            if (errno == E2BIG) {
+                strbufextn(buf, s, 256 - outleft);
+                outleft = 256;
+                cs = s;
+            } else {
+                iconv_close(cd);
+                strbuffree(buf);
+                return NULL;
+            }
+        }
+    }
+    strbufextn(buf, s, 256 - outleft);
+    iconv_close(cd);
+    char *r = strdup(strbufstr(buf));
+    strbuffree(buf);
+    return r;
 }

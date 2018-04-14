@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <locale.h>
 
 #include "../src/json.h"
 
 int main() {
+    setlocale(LC_CTYPE, "C.UTF-8");
+
     struct json *jo = json_object();
     struct json *ja = json_array();
     struct json *js = json_string("string value");
@@ -65,4 +68,33 @@ int main() {
 
     /* destroy */
     json_destroy(jo);
+
+    struct json_error error;
+    struct json *jl;
+    const char *basic_text = "[true, false, null, \"string value\", 123, -123.456, 0.23,"
+                        " 1e2, -1E0, 5e3, 3.2e+5, 2.36e-2]";
+    jl = json_loads(basic_text, &error);
+    if (!jl) {
+        printf("json loads error: %s, code:%d, line: %ld, column: %ld, position: %ld\n",
+               error.text, error.code, error.line, error.column, error.position);
+        exit(1);
+    }
+    ds = json_dumps(jl);
+    printf("%s\n\n", ds);
+    free(ds);
+    json_destroy(jl);
+
+    const char *object_text = "{\"a\": 23, \"b\": [1,2,{}, [], [null], {\"c\": false}], \"d\": {\"e\": ["
+                              "6, true, {\"f\": []}]}, \"g\": {}, \"h\": null}";
+    //const char *object_text = "[\"asdf\", \"\", \"zxvnlovksna\", [{\"ssss\": 5}]]";
+    jl = json_loads(object_text, &error);
+    if (!jl) {
+        printf("json loads error: %s, code:%d, line: %ld, column: %ld, position: %ld\n",
+               error.text, error.code, error.line, error.column, error.position);
+        exit(1);
+    }
+    ds = json_dumps(jl);
+    printf("%s\n\n", ds);
+    free(ds);
+    json_destroy(jl);
 }
