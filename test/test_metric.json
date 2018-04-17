@@ -1,0 +1,24 @@
+[
+    {
+        "metric": "test",
+        "tag": {
+            "host": "debian"
+        },
+        "time": 1523963780,
+        "value": {
+            "sys": 36,
+            "user": 23
+        }
+    },
+    {
+        "metric": "test",
+        "tag": {
+            "host": "debian"
+        },
+        "time": 1523963780,
+        "value": {
+            "sys": 36,
+            "user": 23
+        }
+    }
+]
