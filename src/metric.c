@@ -57,7 +57,7 @@ struct list *metric_loads(const char *buf) {
                     }
                     struct metric *metric = malloc(sizeof(struct metric));
                     metric->data = json_ref(m);
-                    list_append(list, metric);
+                    list = list_append(list, metric);
                 }
             }
         } else if (json_is_object(j)) {
@@ -66,11 +66,16 @@ struct list *metric_loads(const char *buf) {
             if (metric_validate(&m)) {
                 struct metric *metric = malloc(sizeof(struct metric));
                 metric->data = json_ref(j);
-                list_append(list, metric);
+                list = list_append(list, metric);
             }
         }
+
         json_destroy(j);
-        return list;
+
+        if (list_length(list) > 0)
+            return list;
+        list_destroy(list);
+        return NULL;
     }
     return NULL;
 }
@@ -98,11 +103,15 @@ char *metric_list_dumps(struct list *ms) {
             if (!json_object_get(m->data, "time")) {
                 json_object_add(m->data, "time", json_integer(timestamp));
             }
-            json_array_append(array, m->data);
+            json_array_append(array, json_ref(m->data));
         }
     }
-    if (json_array_size(array) > 0)
-        return json_dumps(array);
+    if (json_array_size(array) > 0) {
+        char *r = json_dumps(array);
+        json_destroy(array);
+        return r;
+    }
+    json_destroy(array);
     return NULL;
 }
 
@@ -150,7 +159,7 @@ const char *metric_get_tag(struct metric *m, const char *key) {
     struct json *tags = json_object_get(m->data, "tag");
     if (!tags)
         return NULL;
-    struct json *tv = json_object_get(m->data, key);
+    struct json *tv = json_object_get(tags, key);
     if (!tv)
         return NULL;
     return json_string_value(tv);

@@ -70,7 +70,8 @@ const char *strbufstr(struct strbuf *buf) {
 void strbufexts(struct strbuf *buf, const char *str) {
     int slen = strlen(str);
     if (slen >= (buf->blen - buf->slen)) {
-        buf->str = realloc(buf->str, (slen / buf->blksz + 1) * buf->blksz);
+        buf->blen += (slen / buf->blksz + 1) * buf->blksz;
+        buf->str = realloc(buf->str, buf->blen);
     }
     strncpy(&buf->str[buf->slen], str, slen);
     buf->slen += slen;
@@ -79,7 +80,8 @@ void strbufexts(struct strbuf *buf, const char *str) {
 
 void strbufextn(struct strbuf *buf, const char *str, size_t n) {
     if (n >= (buf->blen - buf->slen)) {
-        buf->str = realloc(buf->str, (n / buf->blksz + 1) * buf->blksz);
+        buf->blen += (n / buf->blksz + 1) * buf->blksz;
+        buf->str = realloc(buf->str, buf->blen);
     }
     strncpy(&buf->str[buf->slen], str, n);
     buf->slen += n;
@@ -96,6 +98,7 @@ struct wcsbuf *wcsbufnew(size_t blksz) {
     buf->slen = 0;
     buf->blen = blksz;
     buf->blksz = blksz;
+    buf->wcs[0] = L'\0';
     return buf;
 }
 
@@ -111,7 +114,8 @@ wchar_t *wcsbufwcs(struct wcsbuf *buf) {
 void wcsbufexts(struct wcsbuf *buf, wchar_t *str) {
     int slen = wcslen(str);
     if (slen >= (buf->blen - buf->slen)) {
-        buf->wcs = realloc(buf->wcs, (slen * sizeof(wchar_t) / buf->blksz + 1) * buf->blksz * sizeof(wchar_t));
+        buf->blen += (slen / buf->blksz + 1) * buf->blksz;
+        buf->wcs = realloc(buf->wcs, buf->blen * sizeof(wchar_t));
     }
     wcsncpy(&buf->wcs[buf->slen], str, slen);
     buf->slen += slen;
@@ -120,7 +124,8 @@ void wcsbufexts(struct wcsbuf *buf, wchar_t *str) {
 
 void wcsbufextn(struct wcsbuf *buf, wchar_t *str, size_t n) {
     if (n >= (buf->blen - buf->slen)) {
-        buf->wcs = realloc(buf->wcs, (n * sizeof(wchar_t) / buf->blksz + 1) * buf->blksz * sizeof(wchar_t));
+        buf->blen += (n / buf->blksz + 1) * buf->blksz;
+        buf->wcs = realloc(buf->wcs, buf->blen * sizeof(wchar_t));
     }
     wcsncpy(&buf->wcs[buf->slen], str, n);
     buf->slen += n;
