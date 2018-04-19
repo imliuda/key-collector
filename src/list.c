@@ -84,6 +84,18 @@ struct list *list_next(struct list *node) {
 }
 
 /**
+ * get list length.
+ */
+size_t list_length(struct list *list) {
+    size_t length = 0;
+    while (list) {
+        length++;
+        list = list_next(list);
+    }
+    return length;
+}
+
+/**
  * destroy a list. node data must be freed before calling this function.
  */
 void list_destroy(struct list *list) {

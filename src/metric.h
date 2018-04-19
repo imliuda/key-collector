@@ -2,57 +2,34 @@
 #define __OSCLT_METRIC_H__
 
 #include <time.h>
+#include <wchar.h>
 
-#include "map.h"
+#include "json.h"
 
-#define EQ_NAME     1
-#define EQ_TAGS     2
-#define EQ_FIELDS   4
-#define EQ_TIME     8
-
-enum metric_vtype { FLOAT, INTEGER, STRING, BOOLEAN};
-enum metric_precision {NSEC, USEC, MSEC, SECOND, MINUTE, HOUR};
-
-struct metric_value {
-    enum metric_vtype type;
-    union {
-        double fv;
-        int64_t iv;
-        char *sv;
-        bool bv;
-    } value;
-}
-
-struct metric_time {
-    struct timespec time;
-    enum precision precision;
-}
+#define METRIC_EQUAL_NAME     1
+#define METRIC_EQUAL_TAGS     2
+#define METRIC_EQUAL_VALUE    4
+#define METRIC_EQUAL_TIME     8
 
 struct metric {
-    char *name;
-    struct map *tags;
-    struct map *fields;
-    struct metric_time time;
+    struct json *data;
 };
 
 struct metric *metric_new();
-void metric_new_full(const char *name, struct map *tags, struct map *fields, struct metric_time time);
-struct list *metric_parse(const char *buf);
-char *metric_serialize(struct list *metrics);
-bool metric_equal(struct metric *metric1, struct metric *metric2, int mode);
-char *metric_get_name(struct metric *metric);
-void metric_set_name(struct metric *metric, char *name);
-struct list * metric_tags(struct metric *metric);
-void metric_add_tag(struct metric *metric, const char *tag, const char *value);
-char *metric_get_tag(struct metric *metric, const char *tag);
-bool metric_update_tag(struct metric *metric, const char *tag, const char *value);
-bool metric_remove_tag(struct metric *metric, const char *tag);
-struct list *metric_fields(struct metric *metric);
-void metric_add_field(struct metric *metric, const char *field, struct metric_value *value);
-struct metric_value *metric_get_field(struct metric *metric, const char *field);
-bool metric_update_field(struct metric *metric, const char *field, struct metric_value *value);
-bool metric_remove_field(struct metric *metric, const char *field);
-struct metric_time metric_get_time(struct metric *metric);
-void metric_set_time(struct metric *metric, struct metric_time time);
+void metric_destroy(struct metric *m);
+void metric_list_destroy(struct list *ms);
+struct list *metric_loads(const char *buf);
+char *metric_dumps(struct metric *m);
+char *metric_list_dumps(struct list *ms);
+bool metric_equal(struct metric *m1, struct metric *m2, int mode);
+void metric_set_name(struct metric *m, const char *name);
+const char *metric_get_name(struct metric *m);
+struct list *metric_tag_keys(struct metric *m);
+void metric_add_tag(struct metric *m, const char *key, const char *value);
+const char *metric_get_tag(struct metric *m, const char *key);
+void metric_set_value(struct metric *m, struct json *value);
+struct json *metric_get_value(struct metric *m);
+void metric_set_time(struct metric *m, time_t time);
+time_t metric_get_time(struct metric *m);
 
 #endif
