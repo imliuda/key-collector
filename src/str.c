@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
 #include <wchar.h>
@@ -63,7 +64,7 @@ void strbuffree(struct strbuf *buf) {
     free(buf);
 }
 
-const char *strbufstr(struct strbuf *buf) {
+char *strbufstr(struct strbuf *buf) {
     return buf->str;
 }
 
@@ -87,7 +88,18 @@ void strbufextn(struct strbuf *buf, const char *str, size_t n) {
 }
 
 void strbufextf(struct strbuf *buf, const char *fmt, ...) {
+    va_list args;
 
+    va_start(args, fmt);
+    size_t len = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    char s[len + 1];
+    va_start(args, fmt);
+    vsnprintf(s, len + 1, fmt, args);
+    va_end(args);
+
+    strbufexts(buf, s);
 }
 
 struct wcsbuf *wcsbufnew(size_t blksz) {

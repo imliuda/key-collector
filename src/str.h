@@ -24,7 +24,7 @@ wchar_t *wcsndup(wchar_t *s, size_t n);
 
 struct strbuf *strbufnew(size_t blksz);
 void strbuffree(struct strbuf *buf);
-const char *strbufstr(struct strbuf *buf);
+char *strbufstr(struct strbuf *buf);
 void strbufexts(struct strbuf *buf, const char *str);
 void strbufextn(struct strbuf *buf, const char *str, size_t n);
 void strbufextf(struct strbuf *buf, const char *fmt, ...);
