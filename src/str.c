@@ -6,6 +6,7 @@
 #include <wchar.h>
 #include <iconv.h>
 #include <errno.h>
+#include <stdarg.h>
 
 #include "str.h"
 
@@ -89,7 +90,18 @@ void strbufextn(struct strbuf *buf, const char *str, size_t n) {
 }
 
 void strbufextf(struct strbuf *buf, const char *fmt, ...) {
+    va_list args;
 
+    va_start(args, fmt);
+    size_t len = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    char s[len + 1];
+    va_start(args, fmt);
+    vsnprintf(s, len + 1, fmt, args);
+    va_end(args);
+
+    strbufexts(buf, s);
 }
 
 struct wcsbuf *wcsbufnew(size_t blksz) {

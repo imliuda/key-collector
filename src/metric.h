@@ -12,27 +12,27 @@
 #define METRIC_EQUAL_TIME     8
 
 enum metric_value_type {
-    METRIC_VALUE_STRING,
-    METRIC_VALUE_INTEGER,
-    METRIC_VALUE_REAL,
-    METRIC_VALUE_BOOLEAN,
-    METRIC_VALUE_NULL
+    METRIC_VALUE_STRING_TYPE,
+    METRIC_VALUE_INTEGER_TYPE,
+    METRIC_VALUE_REAL_TYPE,
+    METRIC_VALUE_BOOLEAN_TYPE,
+    METRIC_VALUE_NULL_TYPE
 };
 
 struct metric_value {
     enum metric_value_type type;
-    union data {
+    union {
         char *strv;
         long long intv;
         double realv;
         bool boolv;
-    };
+    } data;
 };
 
 struct metric {
     char *name;
-    struct map *tags
-    struct metric_value value;
+    struct map *tags;
+    struct metric_value *value;
     time_t time;
 };
 
