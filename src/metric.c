@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <wchar.h>
 
 #include "metric.h"
 #include "map.h"
@@ -11,7 +12,7 @@ static int keycmp(void *key1, void *key2) {
     return strcmp((char *)key1, (char *)key2);
 }
 
-static void metric_destroy_value(struct metric_value *v);
+static void metric_destroy_value(struct metric *m);
 
 struct metric *metric_new() {
     struct metric *m = malloc(sizeof(struct metric));
@@ -22,7 +23,58 @@ struct metric *metric_new() {
     return m;
 }
 
+/*
+ * only allow spaces between name, tags, value and time.
+ */
+static size_t skip_space(wchar_t *wbuf, size_t len) {
+    for (size_t offset = 0; offset < len; offset++) {
+        if (wbuf[offset] != L' ') {
+            return offset;
+        }
+    }
+}
+
 struct list *metric_parse(const char *buf) {
+    wchar_t *wbuf = strutf8dec(buf);
+    size_t end, len = wcslen(wbuf);
+    struct list *ms = list_new();
+
+parse_name:
+    offset = skip_space(wbuf, len);
+    if (wbuf[offset] == '\n')
+        offset++;
+    if (offset == len)
+        return ms;
+    for (size_t end = offset; end < len; end++) {
+        if (wbuf[end] == L' ') {
+            if (end > 0 && wbuf[end - 1] != '\\') {
+                break;
+            }
+        }
+    }
+    /* end must great than offset */
+    char *name = strndup(wbuf + offset, end - offset);
+
+parse_tags:
+    offset = skip_space(wbuf, len);
+    if (wbuf[offset] == '\n')
+        offset++;
+    if (offset == len)
+        return ms;
+
+free_value:
+    destroy_value();
+free_tags:
+    map_destroy();
+free_name:
+    free(name);
+    goto parse_name;
+}
+
+bool metric_validate(struct metric *m) {
+    if (m->name != NULL && m->value != NULL && m->time != 0)
+        return true;
+    return false;
 }
 
 char *metric_serialize(struct metric *m) {
@@ -51,14 +103,14 @@ char *metric_serialize(struct metric *m) {
     if (m->value) {
         if (m->value->type == METRIC_VALUE_STRING_TYPE) {
             strbufexts(sb, "\"");
-            strbufexts(sb, m->value->data.strv);
+            strbufexts(sb, m->value->value);
             strbufexts(sb, "\"");
         } else if (m->value->type == METRIC_VALUE_INTEGER_TYPE) {
-            strbufextf(sb, "%lld", m->value->data.intv);
+            strbufextf(sb, "%lld", *(long long *)m->value->value);
         } else if (m->value->type == METRIC_VALUE_REAL_TYPE) {
-            strbufextf(sb, "%f", m->value->data.realv);
+            strbufextf(sb, "%f", *(double *)m->value->value);
         } else if (m->value->type == METRIC_VALUE_BOOLEAN_TYPE) {
-            if (m->value->data.boolv) {
+            if (*(bool *)m->value->value) {
                 strbufexts(sb, "true");
             } else {
                 strbufexts(sb, "false");
@@ -79,7 +131,7 @@ char *metric_serialize(struct metric *m) {
     return s;
 }
 
-char *metric_list_serialize(struct list *l) {
+char *metric_serialize_list(struct list *l) {
     struct list *p;
     struct metric *m;
     struct strbuf *sb = strbufnew(512);
@@ -130,67 +182,79 @@ const char *metric_get_tag(struct metric *m, const char *key) {
 
 void metric_set_string_value(struct metric *m, const char *v) {
     if (m->value != NULL) {
-        metric_destroy_value(m->value);
+        metric_destroy_value(m);
     }
     struct metric_value *value = malloc(sizeof(struct metric_value));
     value->type = METRIC_VALUE_STRING_TYPE;
-    value->data.strv = strdup(v);
+    value->value = strdup(v);
     m->value = value;
 }
 
 void metric_set_integer_value(struct metric *m, long long v) {
     if (m->value != NULL) {
-        metric_destroy_value(m->value);
+        metric_destroy_value(m);
     }
     struct metric_value *value = malloc(sizeof(struct metric_value));
     value->type = METRIC_VALUE_INTEGER_TYPE;
-    value->data.intv = v;
+    value->value = malloc(sizeof(long long));
+    *(long long *)value->value = v;
     m->value = value;
 }
 
 void metric_set_real_value(struct metric *m, double v) {
     if (m->value != NULL) {
-        metric_destroy_value(m->value);
+        metric_destroy_value(m);
     }
     struct metric_value *value = malloc(sizeof(struct metric_value));
     value->type = METRIC_VALUE_REAL_TYPE;
-    value->data.realv = v;
+    value->value = malloc(sizeof(double));
+    *(double *)value->value = v;
     m->value = value;
 }
 
 void metric_set_boolean_value(struct metric *m, bool v) {
     if (m->value != NULL) {
-        metric_destroy_value(m->value);
+        metric_destroy_value(m);
     }
     struct metric_value *value = malloc(sizeof(struct metric_value));
     value->type = METRIC_VALUE_BOOLEAN_TYPE;
-    value->data.boolv = v;
+    value->value = malloc(sizeof(bool));
+    *(bool *)value->value = v;
     m->value = value;
 }
 
 void metric_set_null_value(struct metric *m) {
     if (m->value != NULL) {
-        metric_destroy_value(m->value);
+        metric_destroy_value(m);
     }
     struct metric_value *value = malloc(sizeof(struct metric_value));
     value->type = METRIC_VALUE_NULL_TYPE;
+    value->value = NULL;
     m->value = value;
 }
 
 const char *metric_get_string_value(struct metric *m) {
-    return m->value->data.strv;
+    if (m->value && m->value->type == METRIC_VALUE_STRING_TYPE)
+        return m->value->value;
+    return NULL;
 }
 
 long long metric_get_integer_value(struct metric *m) {
-    return m->value->data.intv;
+    if (m->value && m->value->type == METRIC_VALUE_INTEGER_TYPE)
+        return *(long long *)m->value->value;
+    return 0;
 }
 
 double metric_get_real_value(struct metric *m) {
-    return m->value->data.realv;
+    if (m->value && m->value->type == METRIC_VALUE_REAL_TYPE)
+        return *(double *)m->value->value;
+    return 0;
 }
 
 bool metric_get_boolean_value(struct metric *m) {
-    return m->value->data.boolv;
+    if (m->value && m->value->type == METRIC_VALUE_BOOLEAN_TYPE)
+        return *(bool *)m->value->value;
+    return false;
 }
 
 void metric_set_time(struct metric *m, time_t time) {
@@ -201,11 +265,14 @@ time_t metric_get_time(struct metric *m) {
     return m->time;
 }
 
-static void metric_destroy_value(struct metric_value *v) {
-    if (v->type == METRIC_VALUE_STRING_TYPE) {
-        free(v->data.strv);
+static void metric_destroy_value(struct metric *m) {
+    if (m->value) {
+        if (m->value->type != METRIC_VALUE_NULL_TYPE) {
+            free(m->value->value);
+        }
+        free(m->value);
+        m->value = NULL;
     }
-    free(v);
 }
 
 void metric_destroy(struct metric *m) {
@@ -221,14 +288,14 @@ void metric_destroy(struct metric *m) {
     map_destroy(m->tags);
     list_destroy(keys);
 
-    metric_destroy_value(m->value);
+    metric_destroy_value(m);
 }
 
 /*
  * do myself work, i do not care the list.
  * the list must be freed by user.
  */
-void metric_list_destroy(struct list *l) {
+void metric_destroy_list(struct list *l) {
     struct list *p;
     for (p = l; p != NULL; p = list_next(p)) {
         metric_destroy(list_data(p));

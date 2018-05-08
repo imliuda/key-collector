@@ -11,14 +11,15 @@ int main() {
     char *ds;
 
     m = metric_new();
-    metric_set_name(m, "test");
+    metric_set_name(m, "sys.cpu.user");
     metric_add_tag(m, "host", "debian");
+    metric_add_tag(m, "cpu", "1");
 
     metric_set_string_value(m, "string value");
     metric_set_time(m, timestamp);
 
     printf("name: %s\n", metric_get_name(m));
-    printf("tags:\n", metric_get_name(m));
+    printf("tags:\n");
     struct list *p, *keys = metric_tag_keys(m);
     for(p = keys; p != NULL; p = list_next(p)) {
         printf("\t%s: %s\n", list_data(p), metric_get_tag(m, list_data(p)));
