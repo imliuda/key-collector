@@ -41,26 +41,78 @@ struct list *metric_parse(const char *buf) {
 
 parse_name:
     offset = skip_space(wbuf, len);
-    if (wbuf[offset] == '\n')
-        offset++;
     if (offset == len)
         return ms;
     for (size_t end = offset; end < len; end++) {
-        if (wbuf[end] == L' ') {
-            if (end > 0 && wbuf[end - 1] != '\\') {
+        if (wbuf[end] == '\n') {
+            offset++;
+            goto parse_name;
+        }
+        if (wbuf[end] == ' ') {
+            if (end > offset && wbuf[end - 1] != '\\') {
+                end++;
                 break;
             }
         }
     }
     /* end must great than offset */
     char *name = strndup(wbuf + offset, end - offset);
+    offset = end;
+
+    offset = skip_space(wbuf, len);
+    if (offset == len)
+        goto free_name;
+
+    /* the content behind name may be tags or value.
+     * first, check if it is string value, if not, try
+     * to find a equal sign ('='), if not found, then
+     * no tags.
+     */
+
+    /* create tags map first */
+    struct map *tags = map_new(keycmp);
 
 parse_tags:
-    offset = skip_space(wbuf, len);
-    if (wbuf[offset] == '\n')
-        offset++;
+
+    /* parse tag key */
+    for (size_t end = offset; end < len; end++) {
+        if (wbuf[end] == '\n') {
+            offset++;
+            goto free_name;
+        }
+        if (wbuf[end] == '=') {
+            end++;
+            break;
+        }
+    }
+    char *key = strndup(wbuf + offset, end - offset);
+    offset = ++end;
+
+    /* parse tag value */
+    for (size_t end = offset; end < len; end++) {
+        if (wbuf[end] == '\n') {
+            free(key);
+            offset++;
+            goto free_name;
+        }
+        if (wbuf[end] == ',') {
+            map_add(tags, key, value);
+            end++;
+            goto parse_tags;
+        }
+        if (wbuf[end] == ' ') {
+            map_add(tags, key, value)
+            break;
+        }
+    }
+
+parse_value:
+    offset = skip_space(wbuf + offset, len);
     if (offset == len)
-        return ms;
+        goto free_tags;
+    if () {
+    
+    }
 
 free_value:
     destroy_value();
