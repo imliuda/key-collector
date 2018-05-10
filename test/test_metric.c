@@ -16,7 +16,7 @@ int main() {
     metric_add_tag(m, "cpu", "1");
 
     metric_set_string_value(m, "string value");
-    metric_set_time(m, timestamp);
+//    metric_set_time(m, timestamp);
 
     printf("name: %s\n", metric_get_name(m));
     printf("tags:\n");

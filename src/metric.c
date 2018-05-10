@@ -17,177 +17,103 @@ static void metric_destroy_value(struct metric *m);
 struct metric *metric_new() {
     struct metric *m = malloc(sizeof(struct metric));
     m->name = NULL;
-    m->tags = map_new(keycmp);
+    m->tags = NULL;
     m->value = NULL;
-    m->time = 0;
+    m->time = (time_t) -1;
     return m;
 }
 
 /*
  * only allow spaces between name, tags, value and time.
  */
-static size_t skip_space(wchar_t *wbuf, size_t offset, size_t len) {
-    size_t end;
-    for (end = offset; end < len; end++) {
-        if (wbuf[end] != ' ') {
+static void metric_skip_space(struct metric_parser *p) {
+    for (size_t end = p->offset; end < p->length; end++) {
+        if (p->buffer[end] != ' ') {
             break;
         }
     }
-    return end;
 }
 
-static size_t skip_line(wchar_t wbuf, size_t offset, size_t len) {
-    size_t end;
-    bool string_value = false;
-    for (end = offset; end < len; end++) {
-        if (wbuf[end] == '\n') {
-            end++;
-            break;
-        }
-    }
-    return end;
+static void metric_parse_error(struct metric_error *e, enum metric_error_code code,
+                               wchar_t wbuf, size_t offset, size_t len) {
 }
 
-struct list *metric_parse(const char *buf) {
+static bool metric_parse_done(struct metric_parser *p) {
+    return p->offset == p->length;
+}
+
+static void metric_parse_destroy(struct list *ms) {
+}
+
+static char *metric_parse_name(struct metric_parser *p, struct metric_error *e) {
+}
+
+static struct map *metric_parse_tags(struct metric_parser *p, struct metric_error *e) {
+}
+
+static struct metric_value *metric_parse_value(struct metric_parser *p, struct metric_error *e) {
+}
+
+static bool metric_parse_time(struct metric_parser *p, struct metric_error *e, time_t *time) {
+}
+
+struct list *metric_parse(const char *buf, struct metric_error *e) {
     wchar_t *wbuf = strutf8dec(buf);
-    size_t offset = 0, end, len = wcslen(wbuf);
-    struct list *ms = list_new();
-    char *name, *tag_name, *tag_value;
+    struct metric_parser parser;
+    parser.buffer = wbuf;
+    parser.offset = 0;
+    parser.length = wcslen(wbuf);
+
+    char *name;
     struct map *tags;
-    bool has_tags;
+    struct metric_value *value;
+    time_t time;
 
-parse_name:
-    offset = skip_space(wbuf, offset, len);
-    if (offset == len)
-        return ms;
-
-    /* parse metric name */
-    for (end = offset; end < len; end++) {
-        if (wbuf[end] == '\n') {
-            offset = ++end;
-            goto parse_name;
-        }
-        /* end must greater than offset, because we have skiped
-           spaces, so space is not the first character. */
-        else if (wbuf[end] == ' ' && wbuf[end - 1] != '\\') {
-            break;
-        }
-        end++;
-    }
-
-    /* end must great than offset, the for loop at least run once. */
-    name = strndup(wbuf + offset, end - offset);
-
-    offset = ++end;
-
-    offset = skip_space(wbuf, offset, len);
-
-    if (offset == len)
-        goto free_name;
-
-    /* create tags map first */
-    tags = map_new(keycmp);
-
-    /* the content behind name may be tags or value.
-     * first, check if it is string value, if not, try
-     * to find a equal sign ('='), if not found, then
-     * no tags.
-     */
-    if (wbuf[offset] == '"') {
-        goto parse_string_value;
-    }
-
-    /* check if has at least a tag */
-    for (end = offset; end < len; end++) {
-        if (wbuf[end] == '\n') {
-            offset++;
-            goto free_tags;
-        } else if (wbuf[end] == '=' && wbuf[end - 1] != '\\') {
-            break;
-        }
-    }
-
-    if (end != len) { 
-parse_tags:
-        /* parse tag key */
-        for (end = offset; end < len; end++) {
-            if (wbuf[end] == '\n') {
-                offset = ++end;
-                goto free_tags;
-            } else if ((wbuf[end] == ',' && wbuf[end - 1] != '\\') ||
-                       (wbuf[end] == ' ' && wbuf[end - 1] != '\\')) {
-                offset = skip_line(wbuf, offset, len);
-            } else if (wbuf[end] == '=' && wbuf[end - 1] != '\\') {
-                break;
-            }
-            end++;
-        }
-
-        /* an empty tag name */
-        if (end == offset) {
-            goto free_tags;
-        }
-
-        tag_name = strndup(wbuf + offset, end - offset);
-
-        offset = ++end;
-
-        /* parse tag value */
-        for (size_t end = offset; end < len; end++) {
-            if (wbuf[end] == '\n') {
-                free(key);
-                offset = ++end;
-                goto free_tags;
-            } else if (wbuf[end] == '=' && wbuf[end - 1] != '\\') {
-                free(key);
-                offset = skip_line(wbuf, offset, len);
-                goto free_tags;
-            } else if (wbuf[end] == ',' || (wbuf[end] == ' ' && wbuf[end - 1] != '\\')) {
-                /* empty tag value */
-                if (end == offset) {
-                    free(tag);
-                    offset = skip_line(wbuf, offset, len);
-                    goto free_tags;
-                }
-                char *value = strndup(wbuf + offset, end - offset);
-                map_add(tags, key, value);
-                if (wbuf[end] == ',') {
-                    offset = ++end;;
-                    goto parse_tags;
-                } else {
-                    offset = ++end;
-                    goto parse_number_value;
-                }
-            }
-        }
-    }
-
-parse_number_value:
-    offset = skip_space(wbuf + offset, len);
-    if (offset == len)
-        goto free_tags;
-    if () {
+    struct list *ms = list_new();
     
+    while (!metric_parse_done(&parser)) {
+        name = metric_parse_name(&parser, e);
+        if (!name) {
+            goto name_error;
+        }
+        tags = metric_parse_tags(&parser, e);
+        if (!tags) {
+            goto tags_error;
+        }
+        value = metric_parse_value(&parser, e);
+        if (!value) {
+            goto value_error;
+        }
+        if (!metric_parse_time(&parser, e, &time)) {
+            goto time_error;
+        }
     }
 
-parse_string_value:
+    return ms;
 
-parse_boolean_value:
+time_error:
+value_error:
+//    struct list *p, *keys = map_keys(tags);
+//    void *orig_key, *orig_data;
+//    for(p = keys; p != NULL; p = list_next(p)) {
+//        map_remove(tags, list_data(p), &orig_key, &orig_data);
+//        free(orig_key);
+//        free(orig_data);
+//    }
+//    map_destroy(tags);
+//    list_destroy(keys);
 
-parse_null_value:
-
-
-free_value:
-    destroy_value();
-free_tags:
-    map_destroy();
-free_name:
+tags_error:
     free(name);
-    goto parse_name;
+ 
+name_error:
+    metric_parse_destroy(ms);
+    
+    return NULL;
 }
 
-bool metric_validate(struct metric *m) {
-    if (m->name != NULL && m->value != NULL && m->time != 0)
+inline bool metric_validate(struct metric *m) {
+    if (m->name != NULL && m->value != NULL)
         return true;
     return false;
 }
@@ -199,23 +125,26 @@ char *metric_serialize(struct metric *m) {
         strbufexts(sb, m->name);
     }
 
-    strbufexts(sb, " ");
+    if (m->tags) {
+        strbufexts(sb, ",");
     
-    struct list *p, *keys = map_keys(m->tags);
-    for (p = keys; p != NULL; p = list_next(p)) {
-        void *data;
-        map_get(m->tags, list_data(p), &data);
-        strbufexts(sb, list_data(p));
-        strbufexts(sb, "=");
-        strbufexts(sb, data);
-        if (list_next(p) != NULL) {
-            strbufexts(sb, ",");
+        struct list *p, *keys = map_keys(m->tags);
+        for (p = keys; p != NULL; p = list_next(p)) {
+            void *data;
+            map_get(m->tags, list_data(p), &data);
+            strbufexts(sb, list_data(p));
+            strbufexts(sb, "=");
+            strbufexts(sb, data);
+            if (list_next(p) != NULL) {
+                strbufexts(sb, ",");
+            }
         }
+        list_destroy(keys);
     }
 
-    strbufexts(sb, " ");
-
     if (m->value) {
+        strbufexts(sb, " ");
+
         if (m->value->type == METRIC_VALUE_STRING_TYPE) {
             strbufexts(sb, "\"");
             strbufexts(sb, m->value->value);
@@ -235,9 +164,10 @@ char *metric_serialize(struct metric *m) {
         }
     }
 
-    strbufexts(sb, " ");
-
-    strbufextf(sb, "%lld", m->time);
+    if (m->time != (time_t) -1) {
+        strbufexts(sb, " ");
+        strbufextf(sb, "%lld", m->time);
+    }
 
     strbufexts(sb, "\n");
 
@@ -274,11 +204,14 @@ const char *metric_get_name(struct metric *m) {
 }
 
 struct list *metric_tag_keys(struct metric *m) {
-    return map_keys(m->tags);
+    return m->tags ? map_keys(m->tags) : NULL;
 }
 
 void metric_add_tag(struct metric *m, const char *key, const char *value) {
     void *orig_data;
+    if (!m->tags) {
+        m->tags = map_new(keycmp);
+    }
     if (map_has(m->tags, (void *)key)) {
         map_update(m->tags, (void *)key, strdup(value), &orig_data);
         free(orig_data);
@@ -289,7 +222,7 @@ void metric_add_tag(struct metric *m, const char *key, const char *value) {
 
 const char *metric_get_tag(struct metric *m, const char *key) {
     void *data;
-    if (map_get(m->tags, (void *)key, &data)) {
+    if (m->tags && map_get(m->tags, (void *)key, &data)) {
         return data;
     }
     return NULL;

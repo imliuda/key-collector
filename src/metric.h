@@ -28,14 +28,34 @@ struct metric {
     char *name;
     struct map *tags;
     struct metric_value *value;
-    time_t time;
+    time_t time; /* ((time_t) -1) represent no time */
 };
+
+enum metric_error_code {
+    METRIC_ERROR_INVALID_TAG_KEY
+};
+
+struct metric_error {
+    enum metric_error_code code;
+    const char *text;
+    size_t line;
+    size_t column;
+    size_t position;
+};
+
+struct metric_parser {
+    wchar_t *buffer;
+    size_t offset;
+    size_t length;
+};
+
+extern const char **metric_error_text;
 
 struct metric *metric_new();
 void metric_destroy(struct metric *m);
 void metric_destroy_list(struct list *ms);
 bool metric_validate(struct metric *m);
-struct list *metric_parse(const char *buf);
+struct list *metric_parse(const char *buf, struct metric_error *e);
 char *metric_serialize(struct metric *m);
 char *metric_serialize_list(struct list *ms);
 bool metric_equal(struct metric *m1, struct metric *m2, int mode);
