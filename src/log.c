@@ -1,18 +1,42 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <stdarg.h>
+#include <time.h>
+#include <ev.h>
 
 #include "log.h"
 #include "config.h"
 #include "str.h"
 
+#define _GNU_SOURCE
+
 static struct queue *log_queue;
 static const char *log_file;
-static uv_file file;
 static enum log_level log_level;
-static uv_loop *loop;
+ev_io log_watcher;
 
-static void write_log(enum log_level level, const char *fmt, ...) {
+static void write_log(EV_P_ ev_io *w, int revents) {
+    if (revents & EV_WRITE) {
+        struct log_entry *e;
+        while(e = queue_front(log_queue)) {
+            size_t nwrite = write(w->fd, e->text + e->nwrite, e->length - e->nwrite);
+            if (nwrite == -1) {
+                /* try it next time */
+                break;
+            } else {
+                e->nwrite += nwrite;
+            }
+            if (e->nwrite == e->length) {
+                e = queue_pop(log_queue);
+                free(e->text);
+                free(e);
+            }
+        }
+    }
+}
+
+void LOG(enum log_level level, const char *fmt, va_list args) {
     if (level < log_level)
         return;
     struct log_entry *entry = malloc(sizeof(struct log_entry));
@@ -21,108 +45,105 @@ static void write_log(enum log_level level, const char *fmt, ...) {
     char time_buf[64];
     time_t t = time(NULL);
     struct tm *tm = gmtime(&t);
-    size_t tlen = strftime(time_buf, 63, "%Y-%m-%d %H:%M%S", tm);
+    size_t tlen = strftime(time_buf, 63, "%Y-%m-%d %H:%M:%S", tm);
     time_buf[tlen] = '\0';
     //free(tm);
 
     struct strbuf *sb = strbufnew(512);
     strbufexts(sb, time_buf); 
     if (level == LOG_DEBUG) {
-        strbufexts(sb, " debug   ");
+        strbufexts(sb, " debug ");
     } else if (level == LOG_INFO) {
-        strbufexts(sb, " info    ");
-    } else if (level == LOG_INFO) {
-        strbufexts(sb, " warning ");
-    } else if (level == LOG_INFO) {
-        strbufexts(sb, " error   ");
-    } else if (level == LOG_INFO) {
-        strbufexts(sb, " fatal   ");
+        strbufexts(sb, " info  ");
+    } else if (level == LOG_WARN) {
+        strbufexts(sb, " warn  ");
+    } else if (level == LOG_ERROR) {
+        strbufexts(sb, " error ");
+    } else if (level == LOG_FATAL) {
+        strbufexts(sb, " fatal ");
     }
     
-    va_list args;
-    va_start(args, fmt);
-    strbufextf(sb, fmt, args);
-    va_end(args);
+    strbufextv(sb, fmt, args);
 
-    char *text = strbufstr(sb);
+    strbufexts(sb, "\n");
+
+    char *text = strdup(strbufstr(sb));
     strbuffree(sb);
 
     entry->text = text;
     entry->nwrite = 0;
-    entry->length = strlen(text) - 1;
+    entry->length = strlen(text);
 
     queue_push(log_queue, entry);
-
-    struct log_entry *entry = queue_front(log_queue);
-    uv_fs_write(loop, &file, );
-    uv_timer_t timer_req;
-    uv_timer_init(oc->loop, &timer_req);
-    uv_timer_start(&timer_req, log_writer, 0, 100);
 }
 
 void log_init(struct osclt *oc) {
-    loop = oc->loop;
-
-    const char *level = config_get_string(oc->config, "log_level", "warning");
+    const char *level = config_get_string(oc->config, "log_level", "warn");
 
     if (strcmp(level, "debug") == 0) {
         log_level = LOG_DEBUG;
     } else if (strcmp(level, "info") == 0) {
         log_level = LOG_INFO;
     } else if (strcmp(level, "warn") == 0) {
-        log_level = LOG_WARNING;
+        log_level = LOG_WARN;
     } else if (strcmp(level, "error") == 0) {
         log_level = LOG_ERROR;
     } else if (strcmp(level, "fatal") == 0) {
         log_level = LOG_FATAL;
     } else {
-        fprintf(stderr, "unknown log level: %s.\n", level);
+        fprintf(stderr, "unknown log level: \"%s\".\n", level);
         exit(1);
     }
 
     log_file = config_get_string(oc->config, "log_file", "/var/log/osclt/osclt.log");
 
-    if (!access(log_file, W_OK)) {
-        fprintf(stderr, "open log file failed: %s.", log_file);
+    int fd = open(log_file, O_WRONLY | O_CREAT);
+
+    if (fd == -1) {
+        fprintf(stderr, "open log file failed: \"%s\".", log_file);
+        exit(1);
     }
 
-    uv_fs_open(loop, &file, log_file, O_WRONLY, 0, NULL);
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    ev_io_init(&log_watcher, write_log, fd, EV_WRITE);
+    ev_io_start(oc->loop, &log_watcher);
 
     log_queue = queue_new();
 }
 
 void log_debug(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    write_log(LOG_DEBUG, fmt, args);
-    va_end(args);
+    va_list ap;
+    va_start(ap, fmt);
+    LOG(LOG_DEBUG, fmt, ap);
+    va_end(ap);
 }
 
 void log_info(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    write_log(LOG_INFO, fmt, args);
-    va_end(args);
+    va_list ap;
+    va_start(ap, fmt);
+    LOG(LOG_INFO, fmt, ap);
+    va_end(ap);
 }
 
-void log_warning(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    write_log(LOG_WARNING, fmt, args);
-    va_end(args);
+void log_warn(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    LOG(LOG_WARN, fmt, ap);
+    va_end(ap);
 }
 
 void log_error(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    write_log(LOG_ERROR, fmt, args);
-    va_end(args);
+    va_list ap;
+    va_start(ap, fmt);
+    LOG(LOG_ERROR, fmt, ap);
+    va_end(ap);
 }
 
 void log_fatal(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    write_log(LOG_FATAL, fmt, args);
-    va_end(args);
+    va_list ap;
+    va_start(ap, fmt);
+    LOG(LOG_FATAL, fmt, ap);
+    va_end(ap);
 }
-

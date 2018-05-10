@@ -2,6 +2,7 @@
 #define __OSCLT_STR_H__
 
 #include <stddef.h>
+#include <stdarg.h>
 
 struct strbuf {
     char *str;
@@ -28,6 +29,7 @@ char *strbufstr(struct strbuf *buf);
 void strbufexts(struct strbuf *buf, const char *str);
 void strbufextn(struct strbuf *buf, const char *str, size_t n);
 void strbufextf(struct strbuf *buf, const char *fmt, ...);
+void strbufextv(struct strbuf *buf, const char *fmt, va_list args);
 
 
 struct wcsbuf *wcsbufnew(size_t blksz);

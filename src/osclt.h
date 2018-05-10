@@ -1,10 +1,10 @@
 #ifndef __OSCLT_OSCLT_H__
 #define __OSCLT_OSCLT_H__
 
-#include <uv.h>
+#include <ev.h>
 
 struct osclt {
-    uv_loop_t       *loop;
+    struct ev_loop  *loop;
     struct config   *config;
 };
 

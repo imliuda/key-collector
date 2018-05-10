@@ -102,6 +102,19 @@ void strbufextf(struct strbuf *buf, const char *fmt, ...) {
     strbufexts(buf, s);
 }
 
+void strbufextv(struct strbuf *buf, const char *fmt, va_list args) {
+    va_list ap;
+
+    va_copy(ap, args);
+
+    size_t len = vsnprintf(NULL, 0, fmt, args);
+
+    char s[len + 1];
+    vsnprintf(s, len + 1, fmt, ap);
+
+    strbufexts(buf, s);
+}
+
 struct wcsbuf *wcsbufnew(size_t blksz) {
     struct wcsbuf *buf = malloc(sizeof(struct wcsbuf));
     buf->wcs = malloc(blksz * sizeof(wchar_t));

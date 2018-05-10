@@ -54,9 +54,9 @@ void *queue_pop(struct queue *q) {
 }
 
 void *queue_front(struct queue *q) {
-    return q->front->data;
+    return q->front ? q->front->data : NULL;
 }
 
 void *queue_back(struct queue *q) {
-    return q->back->data;
+    return q->back ? q->back->data : NULL;
 }
