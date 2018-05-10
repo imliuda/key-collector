@@ -26,93 +26,156 @@ struct metric *metric_new() {
 /*
  * only allow spaces between name, tags, value and time.
  */
-static size_t skip_space(wchar_t *wbuf, size_t len) {
-    for (size_t offset = 0; offset < len; offset++) {
-        if (wbuf[offset] != L' ') {
-            return offset;
+static size_t skip_space(wchar_t *wbuf, size_t offset, size_t len) {
+    size_t end;
+    for (end = offset; end < len; end++) {
+        if (wbuf[end] != ' ') {
+            break;
         }
     }
+    return end;
+}
+
+static size_t skip_line(wchar_t wbuf, size_t offset, size_t len) {
+    size_t end;
+    bool string_value = false;
+    for (end = offset; end < len; end++) {
+        if (wbuf[end] == '\n') {
+            end++;
+            break;
+        }
+    }
+    return end;
 }
 
 struct list *metric_parse(const char *buf) {
     wchar_t *wbuf = strutf8dec(buf);
-    size_t end, len = wcslen(wbuf);
+    size_t offset = 0, end, len = wcslen(wbuf);
     struct list *ms = list_new();
+    char *name, *tag_name, *tag_value;
+    struct map *tags;
+    bool has_tags;
 
 parse_name:
-    offset = skip_space(wbuf, len);
+    offset = skip_space(wbuf, offset, len);
     if (offset == len)
         return ms;
-    for (size_t end = offset; end < len; end++) {
+
+    /* parse metric name */
+    for (end = offset; end < len; end++) {
         if (wbuf[end] == '\n') {
-            offset++;
+            offset = ++end;
             goto parse_name;
         }
-        if (wbuf[end] == ' ') {
-            if (end > offset && wbuf[end - 1] != '\\') {
-                end++;
-                break;
-            }
+        /* end must greater than offset, because we have skiped
+           spaces, so space is not the first character. */
+        else if (wbuf[end] == ' ' && wbuf[end - 1] != '\\') {
+            break;
         }
+        end++;
     }
-    /* end must great than offset */
-    char *name = strndup(wbuf + offset, end - offset);
-    offset = end;
 
-    offset = skip_space(wbuf, len);
+    /* end must great than offset, the for loop at least run once. */
+    name = strndup(wbuf + offset, end - offset);
+
+    offset = ++end;
+
+    offset = skip_space(wbuf, offset, len);
+
     if (offset == len)
         goto free_name;
+
+    /* create tags map first */
+    tags = map_new(keycmp);
 
     /* the content behind name may be tags or value.
      * first, check if it is string value, if not, try
      * to find a equal sign ('='), if not found, then
      * no tags.
      */
+    if (wbuf[offset] == '"') {
+        goto parse_string_value;
+    }
 
-    /* create tags map first */
-    struct map *tags = map_new(keycmp);
+    /* check if has at least a tag */
+    for (end = offset; end < len; end++) {
+        if (wbuf[end] == '\n') {
+            offset++;
+            goto free_tags;
+        } else if (wbuf[end] == '=' && wbuf[end - 1] != '\\') {
+            break;
+        }
+    }
 
+    if (end != len) { 
 parse_tags:
-
-    /* parse tag key */
-    for (size_t end = offset; end < len; end++) {
-        if (wbuf[end] == '\n') {
-            offset++;
-            goto free_name;
-        }
-        if (wbuf[end] == '=') {
+        /* parse tag key */
+        for (end = offset; end < len; end++) {
+            if (wbuf[end] == '\n') {
+                offset = ++end;
+                goto free_tags;
+            } else if ((wbuf[end] == ',' && wbuf[end - 1] != '\\') ||
+                       (wbuf[end] == ' ' && wbuf[end - 1] != '\\')) {
+                offset = skip_line(wbuf, offset, len);
+            } else if (wbuf[end] == '=' && wbuf[end - 1] != '\\') {
+                break;
+            }
             end++;
-            break;
+        }
+
+        /* an empty tag name */
+        if (end == offset) {
+            goto free_tags;
+        }
+
+        tag_name = strndup(wbuf + offset, end - offset);
+
+        offset = ++end;
+
+        /* parse tag value */
+        for (size_t end = offset; end < len; end++) {
+            if (wbuf[end] == '\n') {
+                free(key);
+                offset = ++end;
+                goto free_tags;
+            } else if (wbuf[end] == '=' && wbuf[end - 1] != '\\') {
+                free(key);
+                offset = skip_line(wbuf, offset, len);
+                goto free_tags;
+            } else if (wbuf[end] == ',' || (wbuf[end] == ' ' && wbuf[end - 1] != '\\')) {
+                /* empty tag value */
+                if (end == offset) {
+                    free(tag);
+                    offset = skip_line(wbuf, offset, len);
+                    goto free_tags;
+                }
+                char *value = strndup(wbuf + offset, end - offset);
+                map_add(tags, key, value);
+                if (wbuf[end] == ',') {
+                    offset = ++end;;
+                    goto parse_tags;
+                } else {
+                    offset = ++end;
+                    goto parse_number_value;
+                }
+            }
         }
     }
-    char *key = strndup(wbuf + offset, end - offset);
-    offset = ++end;
 
-    /* parse tag value */
-    for (size_t end = offset; end < len; end++) {
-        if (wbuf[end] == '\n') {
-            free(key);
-            offset++;
-            goto free_name;
-        }
-        if (wbuf[end] == ',') {
-            map_add(tags, key, value);
-            end++;
-            goto parse_tags;
-        }
-        if (wbuf[end] == ' ') {
-            map_add(tags, key, value)
-            break;
-        }
-    }
-
-parse_value:
+parse_number_value:
     offset = skip_space(wbuf + offset, len);
     if (offset == len)
         goto free_tags;
     if () {
     
     }
+
+parse_string_value:
+
+parse_boolean_value:
+
+parse_null_value:
+
 
 free_value:
     destroy_value();
