@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <time.h>
+#include <errno.h>
 #include <ev.h>
 
 #include "log.h"
@@ -14,14 +15,46 @@
 static struct queue *log_queue;
 static size_t log_queue_size;
 static const char *log_file;
+static long long log_size;
+static int log_fd;
 static enum log_level log_level;
 static struct ev_loop *loop;
-static ev_io log_watcher;
-static ev_timer retry_watcher;
+static struct ev_io write_watcher;
+static struct ev_timer retry_watcher;
+static struct ev_stat stat_watcher;
 
-static void retry_write_log(EV_P_ ev_timer *w, int revents) {
+static void stat_log(EV_P_ ev_stat *w, int revents) {
+    if (revents & EV_STAT) {
+        if (!w->attr.st_nlink) { /* deleted or renamed */
+            /* close old file first */
+            close(log_fd);
+
+            log_fd = open(log_file, O_RDWR | O_APPEND | O_CREAT, 0755);
+
+            if (log_fd == -1) {
+                fprintf(stderr, "rotate log file \"%s\" error: %s.", log_file, strerror(errno));
+                exit(1);
+            }
+        
+            int flags = fcntl(log_fd, F_GETFL, 0);
+            fcntl(log_fd, F_SETFL, flags | O_NONBLOCK);
+
+            ev_io_set(&write_watcher, log_fd, EV_NONE);
+        } else if (w->attr.st_size > log_size && log_size != 0) {
+            char old[strlen(log_file) + 5];
+            strcpy(old, log_file);
+            strcat(old, ".old");
+            if (rename(log_file, old) == -1) {
+                fprintf(stderr, "rename log file \"%s\" error: %s.", log_file, strerror(errno));
+                exit(1);
+            }
+        }
+    }
+}
+
+static void write_log_retry(EV_P_ ev_timer *w, int revents) {
     if (revents & EV_TIMER) {
-        ev_feed_event(loop, &log_watcher, EV_WRITE);
+        ev_feed_event(loop, &write_watcher, EV_WRITE);
     }
 }
 
@@ -29,14 +62,17 @@ static void write_log(EV_P_ ev_io *w, int revents) {
     if (revents & EV_WRITE) {
         struct log_entry *e;
         while(e = queue_front(log_queue)) {
-            size_t nwrite = write(w->fd, e->text + e->nwrite, e->length - e->nwrite);
+            size_t nwrite = write(log_fd, e->text + e->nwrite, e->length - e->nwrite);
             if (nwrite == -1) {
+                if (e->nwrite && fsync(log_fd) == -1) {
+                    e->nwrite = 0;
+                }
                 break;
             } else {
                 e->nwrite += nwrite;
             }
             if (e->nwrite == e->length) {
-                if (fsync(w->fd) != -1) {
+                if (fsync(log_fd) != -1) {
                     e = queue_pop(log_queue);
                     free(e->text);
                     free(e);
@@ -94,7 +130,7 @@ void LOG(enum log_level level, const char *fmt, va_list args) {
 
     queue_push(log_queue, entry);
 
-    ev_feed_event(loop, &log_watcher, EV_WRITE);
+    ev_feed_event(loop, &write_watcher, EV_WRITE);
 }
 
 void log_init(struct osclt *oc) {
@@ -118,26 +154,34 @@ void log_init(struct osclt *oc) {
     }
 
     log_file = config_get_string(oc->config, "log_file", "/var/log/osclt/osclt.log");
-    log_queue_size = config_get_integer(oc->config, "log_queue_size", 1000);
+    /* if log_size not set or set with 0, consider it is managed by logrotate(8) */
+    log_size = config_get_integer(oc->config, "log_size", 0);
+    log_queue_size = config_get_integer(oc->config, "log_queue", 1000);
 
-    int fd = open(log_file, O_RDWR | O_APPEND | O_CREAT, 0755);
+    log_fd = open(log_file, O_RDWR | O_APPEND | O_CREAT, 0755);
 
-    if (fd == -1) {
-        fprintf(stderr, "open log file failed: \"%s\".", log_file);
+    if (log_fd == -1) {
+        fprintf(stderr, "open log file \"%s\" error: %s.", log_file, strerror(errno));
         exit(1);
     }
 
-    int flags = fcntl(fd, F_GETFL, 0);
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    /* O_NONBLOCK seems meaningless, fsync has been used, later may use
+       separate thread loop for logging. */
+    int flags = fcntl(log_fd, F_GETFL, 0);
+    fcntl(log_fd, F_SETFL, flags | O_NONBLOCK);
+
+    /* file delete or rename event, for log rotate. */
+    ev_stat_init(&stat_watcher, stat_log, log_file, 0);
+    ev_stat_start(loop, &stat_watcher);
 
     /* write log queue to file every 1 second, used for handling
        unsuccessful log write */
-    ev_timer_init(&retry_watcher, retry_write_log, 0, 1);
+    ev_timer_init(&retry_watcher, write_log_retry, 0, 1);
     ev_timer_start(loop, &retry_watcher);
 
     /* new log comes, write it right now with ev_feed_event(). */
-    ev_io_init(&log_watcher, write_log, fd, EV_NONE);
-    ev_io_start(loop, &log_watcher);
+    ev_io_init(&write_watcher, write_log, log_fd, EV_NONE);
+    ev_io_start(loop, &write_watcher);
 
     log_queue = queue_new();
 }
