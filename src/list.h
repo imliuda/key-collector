@@ -11,6 +11,7 @@ struct list *list_append(struct list *list, void *data);
 struct list *list_remove(struct list *list, void *data);
 struct list *list_extend(struct list *list1, struct list *list2);
 struct list *list_next(struct list *node);
+size_t list_length(struct list *list);
 void *list_data(struct list *node);
 void list_destroy(struct list *list);
 
