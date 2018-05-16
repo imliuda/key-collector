@@ -90,7 +90,7 @@ size_t list_length(struct list *list) {
     size_t length = 0;
     while (list) {
         length++;
-        list = list_next(list);
+        list = list->next;
     }
     return length;
 }

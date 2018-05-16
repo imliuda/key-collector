@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
 #include <wchar.h>
@@ -63,7 +64,7 @@ void strbuffree(struct strbuf *buf) {
     free(buf);
 }
 
-const char *strbufstr(struct strbuf *buf) {
+char *strbufstr(struct strbuf *buf) {
     return buf->str;
 }
 
@@ -89,7 +90,31 @@ void strbufextn(struct strbuf *buf, const char *str, size_t n) {
 }
 
 void strbufextf(struct strbuf *buf, const char *fmt, ...) {
+    va_list args;
 
+    va_start(args, fmt);
+    size_t len = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    char s[len + 1];
+    va_start(args, fmt);
+    vsnprintf(s, len + 1, fmt, args);
+    va_end(args);
+
+    strbufexts(buf, s);
+}
+
+void strbufextv(struct strbuf *buf, const char *fmt, va_list args) {
+    va_list ap;
+
+    va_copy(ap, args);
+
+    size_t len = vsnprintf(NULL, 0, fmt, args);
+
+    char s[len + 1];
+    vsnprintf(s, len + 1, fmt, ap);
+
+    strbufexts(buf, s);
 }
 
 struct wcsbuf *wcsbufnew(size_t blksz) {
@@ -165,7 +190,7 @@ wchar_t *strutf8dec(const char *s) {
     return r;
 }
 
-char *strutf8enc(const wchar_t *wcs) {
+char *strutf8nenc(const wchar_t *wcs, size_t len) {
     iconv_t cd = iconv_open("UTF-8", "WCHAR_T");
 
     if (cd == (iconv_t) -1)
@@ -175,7 +200,7 @@ char *strutf8enc(const wchar_t *wcs) {
     char s[256];
     char *cs = s;
     size_t outleft = 256;
-    size_t inleft = wcslen(wcs) * sizeof(wchar_t);
+    size_t inleft = len * sizeof(wchar_t);
 
     while (inleft != 0) {
         size_t nconv = iconv(cd, (char **)&wcs, &inleft, &cs, &outleft);
@@ -196,4 +221,8 @@ char *strutf8enc(const wchar_t *wcs) {
     char *r = strdup(strbufstr(buf));
     strbuffree(buf);
     return r;
+}
+
+char *strutf8enc(const wchar_t *wcs) {
+    return strutf8nenc(wcs, wcslen(wcs));
 }
