@@ -32,7 +32,7 @@ static void stat_log(EV_P_ ev_stat *w, int revents) {
             log_fd = open(log_file, O_RDWR | O_APPEND | O_CREAT, 0755);
 
             if (log_fd == -1) {
-                fprintf(stderr, "rotate log file \"%s\" error: %s.", log_file, strerror(errno));
+                fprintf(stderr, "rotate log file \"%s\" error: %s.\n", log_file, strerror(errno));
                 exit(1);
             }
         
@@ -45,7 +45,7 @@ static void stat_log(EV_P_ ev_stat *w, int revents) {
             strcpy(old, log_file);
             strcat(old, ".old");
             if (rename(log_file, old) == -1) {
-                fprintf(stderr, "rename log file \"%s\" error: %s.", log_file, strerror(errno));
+                fprintf(stderr, "rename log file \"%s\" error: %s.\n", log_file, strerror(errno));
                 exit(1);
             }
         }
@@ -91,6 +91,7 @@ void LOG(enum log_level level, const char *fmt, va_list args) {
 
     if (queue_size(log_queue) >= log_queue_size) {
         /* just drop the data. later, may add self-monitoring static metric. */
+        fprintf(stderr, "log queue full, drop new coming log...\n");
         return;
     }
 
@@ -135,8 +136,18 @@ void LOG(enum log_level level, const char *fmt, va_list args) {
 
 void log_init(struct osclt *oc) {
     loop = oc->loop;
+
+    struct config *c;
  
-    const char *level = config_get_string(oc->config, "log_level", "warn");
+    c = config_object_get(oc->config, "log_level");
+    if (!c) {
+        const char *level = "info";
+    } else if (config_type(c) != CONFIG_STRING_TYPE) {
+        fprintf(stderr, "invalid \"log_level\" config\n");
+        exit(1);
+    }
+
+    const char *level = config_string_value(c);
 
     if (strcmp(level, "debug") == 0) {
         log_level = LOG_DEBUG;
@@ -153,15 +164,38 @@ void log_init(struct osclt *oc) {
         exit(1);
     }
 
-    log_file = config_get_string(oc->config, "log_file", "/var/log/osclt/osclt.log");
-    /* if log_size not set or set with 0, consider it is managed by logrotate(8) */
-    log_size = config_get_integer(oc->config, "log_size", 0);
-    log_queue_size = config_get_integer(oc->config, "log_queue", 1000);
+    c = config_object_get(oc->config, "log_file");
+    if (!c) {
+        log_file = "/var/log/osclt/osclt.log";
+    } else if (config_type(c) != CONFIG_STRING_TYPE) {
+        fprintf(stderr, "invalid \"log_file\" config\n");
+        exit(1);
+    }
+    log_file = config_string_value(c);
+
+    c = config_object_get(oc->config, "log_size");
+    if (!c) {
+        /* log_size = 0 will not perform by osclt self */
+        log_size = 0;
+    } else if (config_type(c) != CONFIG_SIZE_TYPE) {
+        fprintf(stderr, "invalid \"log_size\" config\n");
+        exit(1);
+    }
+    log_size = config_size_value(c, CONFIG_BYTE);
+
+    c = config_object_get(oc->config, "log_queue");
+    if (!c) {
+        log_queue_size = 1000;
+    } else if (config_type(c) != CONFIG_INTEGER_TYPE) {
+        fprintf(stderr, "invalid \"log_queue\" config\n");
+        exit(1);
+    }
+    log_queue_size = config_integer_value(c);
 
     log_fd = open(log_file, O_RDWR | O_APPEND | O_CREAT, 0755);
 
     if (log_fd == -1) {
-        fprintf(stderr, "open log file \"%s\" error: %s.", log_file, strerror(errno));
+        fprintf(stderr, "open log file \"%s\" error: %s.\n", log_file, strerror(errno));
         exit(1);
     }
 
