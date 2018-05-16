@@ -190,7 +190,7 @@ wchar_t *strutf8dec(const char *s) {
     return r;
 }
 
-char *strutf8enc(const wchar_t *wcs) {
+char *strutf8nenc(const wchar_t *wcs, size_t len) {
     iconv_t cd = iconv_open("UTF-8", "WCHAR_T");
 
     if (cd == (iconv_t) -1)
@@ -200,7 +200,7 @@ char *strutf8enc(const wchar_t *wcs) {
     char s[256];
     char *cs = s;
     size_t outleft = 256;
-    size_t inleft = wcslen(wcs) * sizeof(wchar_t);
+    size_t inleft = len * sizeof(wchar_t);
 
     while (inleft != 0) {
         size_t nconv = iconv(cd, (char **)&wcs, &inleft, &cs, &outleft);
@@ -221,4 +221,8 @@ char *strutf8enc(const wchar_t *wcs) {
     char *r = strdup(strbufstr(buf));
     strbuffree(buf);
     return r;
+}
+
+char *strutf8enc(const wchar_t *wcs) {
+    return strutf8nenc(wcs, wcslen(wcs));
 }

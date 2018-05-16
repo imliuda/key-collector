@@ -24,6 +24,7 @@ int main() {
     *a1 = 13; *a2 = 6; *a3 = 9;
     list = list_append(list, a1);
     list = list_append(list, a2);
+    printf("list length: %d\n", list_length(list));
     print_int_list(list);
     // extend
     list1 = list_append(list1, a3);

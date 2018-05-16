@@ -23,7 +23,6 @@ const char *config_error_text[] = {
     [CONFIG_INVALID_KEY] = "invalid key",
     [CONFIG_DUPLICATED_KEY] = "duplicated key",
     [CONFIG_ADDITION_QUOTATION] = "additional quotation mark '\"'",
-    [CONFIG_EXPECTING_DOT] = "expecting dot",
     [CONFIG_EXPECTING_QUOTATION] = "expecting quotation mark '\"'",
     [CONFIG_EXPECTING_CLOSE_BRACE] = "expecting close brace '}'",
     [CONFIG_EXPECTING_VALUE] = "expecting a value",
@@ -106,21 +105,6 @@ static inline void config_skip_inline(struct config_parser *p, int mode) {
     }
 }
 
-char *wcs_to_bs(wchar_t p[], size_t len) {
-    char *str = NULL; 
-    int strlen = 0;
-    for (int i = 0; i < len; i++) {
-        char bytes[MB_CUR_MAX];
-        int n = wctomb(bytes, p[i]);
-        str = realloc(str, strlen + n);
-        strncpy(str + strlen, bytes, n);
-        strlen += n;
-    }
-    str = realloc(str, strlen + 1);
-    str[strlen] = '\0';
-    return str;
-}
-
 static void config_parse_error(struct config_parser *p, struct config_error *e, enum config_error_code code) {
     if (e == NULL) {
         return;
@@ -155,58 +139,72 @@ static void config_parse_error(struct config_parser *p, struct config_error *e, 
  * escape character in quoted keys has no special meaning.
  */
 static wchar_t *config_parse_key(struct config_parser *p, struct config_error *e) {
-    size_t start = p->offset, end = p->offset;
+    size_t start = p->offset, end;
+
     while (p->offset < p->length) {
         if (p->buffer[p->offset] == '=' || p->buffer[p->offset] == ':') {
             break;
         } else if (p->buffer[p->offset] == '\n') {
             config_parse_error(p, e, CONFIG_UNEXPECTED_NEWLINE);
             return NULL;
-        } else {
-            if (!config_is_whitespace(p->buffer[p->offset])) end++;
-            p->offset++;
         }
+        p->offset++;
     }
+
+    end = p->offset - 1;
+
+    while (end > start) {
+        if (!config_is_whitespace(p->buffer[end])) {
+            end++;
+            break;
+        }
+        end--;
+    }
+    
     if (start == end) {
+        p->offset = start;
         config_parse_error(p, e, CONFIG_INVALID_KEY);
         return NULL;
     }
 
-    if (p->buffer[start] == '.' || p->buffer[end - 1] == '.') {
-        config_parse_error(p, e, CONFIG_INVALID_KEY);
-        return NULL;
-    }
-
-    bool quote = false, match = false;
+    bool quote = false, match = true;
     for (size_t i = start; i < end; i++) {
         if (p->buffer[i] == '"') {
-            if (match) {
-                config_parse_error(p, e, CONFIG_ADDITION_QUOTATION); 
+            if (!quote) {
+                match = false;
+                quote = true;
+            } else {
+                match = true;
+                quote = false;
+            }
+            /* check before open quote if is dot */
+            if (quote && i != start && p->buffer[i - 1] != '.') {
+                config_parse_error(p, e, CONFIG_INVALID_KEY);
+                p->offset = i;
                 return NULL;
             }
-            if (!quote) quote = true;
-            else match = true;
-            if (!match && i != start && p->buffer[i - 1] != '.') {
-                config_parse_error(p, e, CONFIG_EXPECTING_DOT);
-                return NULL;
-            }
+            /* check after open quote if is dot */
             if (match && i != end - 1 && p->buffer[i + 1] != '.') {
-                config_parse_error(p, e, CONFIG_EXPECTING_DOT);
+                p->offset = i;
+                config_parse_error(p, e, CONFIG_INVALID_KEY);
+                return NULL;
+            }
+        } else if (p->buffer[i] == '.') {
+            /* first and last character can't be '.' */
+            if (i == start || i == end -1) {
+                p->offset = i;
+                config_parse_error(p, e, CONFIG_INVALID_KEY);
                 return NULL;
             }
         }
     }
 
-    if (quote && !match) {
-        p->offset = end;
+    if (!match) {
         config_parse_error(p, e, CONFIG_EXPECTING_QUOTATION);
         return NULL;
     }
 
-    wchar_t *key = malloc((end - start + 1) * sizeof(wchar_t));
-    memcpy(key, p->buffer + start, (end - start) * sizeof(wchar_t));
-    key[end - start] = L'\0';
-    return key;
+    return wcsndup(p->buffer + start, end - start);
 }
 
 static struct config *config_parse_object(struct config_parser *p, struct config_error *e) {
@@ -222,13 +220,14 @@ static struct config *config_parse_object(struct config_parser *p, struct config
         config_skip(p, SKIP_WHITESPACE | SKIP_COMMENT);
         /* pfer is done. check if has open brace and return */
         /* happen when parsing root object */
-        if (p->offset < p->length) {
+        if (p->offset == p->length) {
             if (open_brace) {
                 config_destroy(object);
                 config_parse_error(p, e, CONFIG_EXPECTING_CLOSE_BRACE);
                 return NULL;
+            } else {
+                return object;
             }
-            return object;
         }
 
         /* get current offset's value, non-empty, non-comment*/
@@ -268,10 +267,11 @@ static struct config *config_parse_object(struct config_parser *p, struct config
                 config_destroy(object);
                 return NULL;
             }
+            printf("key: %ls, %c\n", key, p->buffer[p->offset]);
 
             config_skip_inline(p, SKIP_WHITESPACE);
 
-            if (p->offset < p->length || (p->buffer[p->offset] != '=' && p->buffer[p->offset] != ':')) {
+            if (p->offset == p->length || (p->buffer[p->offset] != '=' && p->buffer[p->offset] != ':')) {
                 free(key);
                 config_destroy(object);
                 config_parse_error(p, e, CONFIG_EXPECTING_SEPERATOR);
@@ -282,25 +282,20 @@ static struct config *config_parse_object(struct config_parser *p, struct config
             p->offset++;
             config_skip_inline(p, SKIP_WHITESPACE | SKIP_COMMENT);
 
-            if (p->offset < p->length) {
+            if (p->offset == p->length) {
                 free(key);
                 config_destroy(object);
                 config_parse_error(p, e, CONFIG_EXPECTING_VALUE);
                 return NULL;
             }
 
-            while (!p->offset < p->length) {
+            while (p->offset < p->length) {
                 c = p->buffer[p->offset];
 
                 if (c == '\n') {
                     free(key);
                     config_destroy(object);
                     config_parse_error(p, e, CONFIG_UNEXPECTED_NEWLINE);
-                    return NULL;
-                } else if (c == ',') {
-                    free(key);
-                    config_destroy(object);
-                    config_parse_error(p, e, CONFIG_EXPECTING_VALUE);
                     return NULL;
                 } else if (c == '{') {
                     value = config_parse_object(p, e);
@@ -328,7 +323,7 @@ static struct config *config_parse_object(struct config_parser *p, struct config
 
             for (size_t i = 0; i < wcslen(key); i++) {
                 if (key[i] == '.' && quote == false) {
-                    pk = wcs_to_bs(key + start, end - start);
+                    pk = strutf8nenc(key + start, end - start);
                     if (!map_has(curr, pk)) {
                         struct config *child = malloc(sizeof(struct config));
                         child->type = CONFIG_OBJECT_TYPE;
@@ -352,7 +347,7 @@ static struct config *config_parse_object(struct config_parser *p, struct config
                 }
             }
 
-            pk = wcs_to_bs(key + start, end - start);
+            pk = strutf8nenc(key + start, end - start);
             if (map_has(curr, pk)) {
                 free(key);
                 free(pk);
@@ -380,7 +375,7 @@ static struct config *config_parse_array(struct config_parser *p, struct config_
     array->type = CONFIG_ARRAY_TYPE;
     array->value = list_new();
 
-    while (!p->offset < p->length) {
+    while (p->offset < p->length) {
         config_skip(p, SKIP_WHITESPACE | SKIP_COMMENT);
         if (p->buffer[p->offset] == '[') {
             if (open_bracket) {
@@ -415,7 +410,7 @@ static struct config *config_parse_array(struct config_parser *p, struct config_
             array->value = list_append(array->value, object);
             has_values = true;
         } else {
-            if (p->offset < p->length) {
+            if (p->offset == p->length) {
                 config_destroy(array);
                 config_parse_error(p, e, CONFIG_EXPECTING_CLOSE_BRACKET);
                 return NULL;
@@ -447,6 +442,8 @@ static struct config *config_parse_simple(struct config_parser *p) {
         return simple;
     } else if (simple = config_parse_duration(p)) {
         return simple;
+    } else if (simple = config_parse_size(p)) {
+        return simple;
     } else {
         return NULL;
     }
@@ -469,8 +466,7 @@ static struct config *config_parse_string(struct config_parser *p) {
     p->offset++;
 
     while (p->offset < p->length) {
-        /* read end of line or object fields separator ',' */
-        if (p->buffer[p->offset] == '\n' && !match) {
+        if (p->buffer[p->offset] == '\n') {
             p->offset = offset;
             return NULL;
         } else if (p->buffer[p->offset] == '"' && p->buffer[p->offset - 1] != '\\'){
@@ -484,7 +480,7 @@ static struct config *config_parse_string(struct config_parser *p) {
     // skip qoutes
     start += 1; end -= 1;
 
-    char *str = wcs_to_bs(p->buffer + start, end - start);
+    char *str = strutf8nenc(p->buffer + start, end - start);
     char *new = malloc(64);
     size_t index = 0, size = 0;
     for (char *c = str; *c != '\0';) {
@@ -641,7 +637,7 @@ static struct config *config_parse_number(struct config_parser *p) {
 
     simple = malloc(sizeof(struct config));
     simple->type = type;
-    char *str = wcs_to_bs(p->buffer + start, end - start);
+    char *str = strutf8nenc(p->buffer + start, end - start);
     if (type == CONFIG_INTEGER_TYPE) {
         uint64_t *value = malloc(sizeof(uint64_t));
         *value = strtoll(str, NULL, base) * sign;
@@ -690,7 +686,7 @@ static struct config *config_parse_duration(struct config_parser *p) {
     size_t start, end, offset = p->offset;
 
     start = end = p->offset;
-    while (!p->offset < p->length) {
+    while (p->offset < p->length) {
         if (iswdigit(p->buffer[p->offset])) end = ++p->offset;
         else break;
     }
@@ -698,7 +694,7 @@ static struct config *config_parse_duration(struct config_parser *p) {
          p->offset = offset;
          return NULL;
     }
-    char *value = wcs_to_bs(p->buffer + start, end - start);
+    char *value = strutf8nenc(p->buffer + start, end - start);
     config_skip_inline(p, SKIP_WHITESPACE);
     if (p->offset == p->length) {
          p->offset = offset;
@@ -706,7 +702,7 @@ static struct config *config_parse_duration(struct config_parser *p) {
     }
 
     start = end = p->offset;
-    while (!p->offset < p->length) {
+    while (p->offset < p->length) {
         if (!config_is_whitespace(p->buffer[p->offset])) {
             if (p->buffer[p->offset] == ',' || p->buffer[p->offset] == '}' ||
                 p->buffer[p->offset] == ']' || p->buffer[p->offset] == '\n') {
@@ -722,7 +718,7 @@ static struct config *config_parse_duration(struct config_parser *p) {
          p->offset = offset;
         return NULL;
     }
-    char *unit = wcs_to_bs(p->buffer + start, end - start);
+    char *unit = strutf8nenc(p->buffer + start, end - start);
 
     config_skip_inline(p, SKIP_WHITESPACE | SKIP_COMMENT);
     if (p->offset != p->length && p->buffer[p->offset] != '\n' && p->buffer[p->offset] != ',' &&
@@ -771,7 +767,7 @@ static struct config *config_parse_size(struct config_parser *p) {
     size_t start, end, offset = p->offset;
 
     start = end = p->offset;
-    while (!p->offset < p->length) {
+    while (p->offset < p->length) {
         if (iswdigit(p->buffer[p->offset])) end = ++p->offset;
         else break;
     }
@@ -779,12 +775,12 @@ static struct config *config_parse_size(struct config_parser *p) {
          p->offset = offset;
          return NULL;
     }
-    char *value = wcs_to_bs(p->buffer + start, end - start);
+    char *value = strutf8nenc(p->buffer + start, end - start);
     config_skip_inline(p, SKIP_WHITESPACE);
 
     /* has got a value, parse unit */
     start = end = p->offset;
-    while (!p->offset < p->length) {
+    while (p->offset < p->length) {
         if (!config_is_whitespace(p->buffer[p->offset])) {
             if (p->buffer[p->offset] == ',' || p->buffer[p->offset] == '}' ||
                 p->buffer[p->offset] == ']' || p->buffer[p->offset] == '\n') {
@@ -800,7 +796,7 @@ static struct config *config_parse_size(struct config_parser *p) {
          p->offset = offset;
         return NULL;
     }
-    char *unit = wcs_to_bs(p->buffer + start, end - start);
+    char *unit = strutf8nenc(p->buffer + start, end - start);
 
     config_skip_inline(p, SKIP_WHITESPACE | SKIP_COMMENT);
     if (p->offset != p->length && p->buffer[p->offset] != '\n' && p->buffer[p->offset] != ',' &&
@@ -965,6 +961,8 @@ static void config_dumps_internal(struct config *config, int level) {
         printf("\"%s\"\n", config->value);
     } else if (config->type == CONFIG_INTEGER_TYPE) {
         printf("%lld\n", *(uint64_t *)(config->value));
+    } else if (config->type == CONFIG_DOUBLE_TYPE) {
+        printf("%f\n", *(double *)(config->value));
     } else if (config->type == CONFIG_BOOLEAN_TYPE) {
         printf("%s\n", *(bool *)(config->value) ? "true" : "false");
     } else if (config->type == CONFIG_DURATION_TYPE) {
@@ -1008,6 +1006,7 @@ static void config_dumps_internal(struct config *config, int level) {
         } else if (v->unit == CONFIG_YOTTA_BYTE) {
             printf("YB");
         }
+        printf("\n");
     }
 }
 
@@ -1066,6 +1065,7 @@ struct config *config_object_get(struct config *config, const char *path) {
     for (int i = 0; i < strlen(path); i++) {
         if (path[i] == '.' && quote == false) {
             strncpy(pk, path + start, end - start);
+            pk[end - start] = '\0';
             struct config *child;
             if (!map_get(curr, pk, (void **)&child)) {
                 return NULL;
@@ -1106,6 +1106,7 @@ struct config *config_array_get(struct config *config, size_t index) {
         if (i == index)
             return list_data(p);
         i++;
+        p = list_next(p);
     }
     return NULL;
 }
@@ -1163,8 +1164,7 @@ static long long config_duration_value_convert(long long v, enum config_duration
 
 long long config_duration_value(struct config *config, enum config_duration_unit unit) {
     struct config_duration *value = config->value;
-    long long v = *(long long *)value->value;
-    return config_duration_value_convert(v, value->unit, unit);
+    return config_duration_value_convert(value->value, value->unit, unit);
 }
 
 static long long config_size_value_convert(long long v, enum config_size_unit from,
@@ -1180,6 +1180,5 @@ static long long config_size_value_convert(long long v, enum config_size_unit fr
 
 long long config_size_value(struct config *config, enum config_size_unit unit) {
     struct config_size *value = config->value;
-    long long v = *(long long *)value->value;
-    return config_size_value_convert(v, value->unit, unit);
+    return config_size_value_convert(value->value, value->unit, unit);
 }

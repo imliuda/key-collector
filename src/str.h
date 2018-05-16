@@ -39,6 +39,7 @@ void wcsbufexts(struct wcsbuf *buf, wchar_t *str);
 void wcsbufextn(struct wcsbuf *buf, wchar_t *str, size_t n);
 
 wchar_t *strutf8dec(const char *s);
+char *strutf8nenc(const wchar_t *s, size_t len);
 char *strutf8enc(const wchar_t *s);
 
 #endif
