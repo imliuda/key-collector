@@ -18,7 +18,7 @@ int main() {
     struct osclt *oc = malloc(sizeof(struct osclt));
 
     char *error;
-    struct config *config = config_load("./test_log.conf", &error);
+    struct config *config = config_load("./test_log.conf", NULL);
     oc->config = config;
 
     struct ev_loop *loop = ev_loop_new(0);

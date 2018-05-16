@@ -267,7 +267,6 @@ static struct config *config_parse_object(struct config_parser *p, struct config
                 config_destroy(object);
                 return NULL;
             }
-            printf("key: %ls, %c\n", key, p->buffer[p->offset]);
 
             config_skip_inline(p, SKIP_WHITESPACE);
 
@@ -611,8 +610,8 @@ static struct config *config_parse_number(struct config_parser *p) {
         } else if (iswdigit(p->buffer[p->offset])) {
             p->offset++;
             end++;
-        } else if (base == 16 && (p->buffer[p->offset] >= 'a' && p->buffer[p->offset] <= 'f') ||
-                   p->buffer[p->offset] >= 'A' && p->buffer[p->offset] <= 'F') {
+        } else if (base == 16 && ((p->buffer[p->offset] >= 'a' && p->buffer[p->offset] <= 'f') ||
+                   p->buffer[p->offset] >= 'A' && p->buffer[p->offset] <= 'F')) {
             p->offset++;
             end++;
         } else {
@@ -1049,7 +1048,6 @@ void config_destroy(struct config *config) {
     } else {
         fprintf(stderr, "config destroy error, if you use config_load "
                         "series functions, there may be a bug.\n");
-        exit(EXIT_FAILURE);
     }
 }
 
