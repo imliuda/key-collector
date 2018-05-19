@@ -4,14 +4,12 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include <jansson.h>
 #include <ev.h>
-#include "schedule.h"
+
 #include "config.h"
 
 osclt_task *task_list = NULL;
-/*
-*/
+
 void schedule_load(osclt_task **task_list) {
     json_t *tasks = json_object_get(config, "schedule");
     if (tasks == NULL) {
