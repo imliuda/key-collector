@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 2.4)
 project(osclt)
 
 option(BUILD_STATIC "build osclt static link" ON)
+option(BUILD_TEST "build test programs" OFF)
 
 include_directories(include BEFORE)
 
@@ -24,9 +25,23 @@ file(GLOB OSCLT_SRC
     src/output/*.c
     src/process/*.c
 )
+
 add_executable(osclt-bin ${OSCLT_SRC})
+
 set_target_properties(osclt-bin PROPERTIES RUNTIME_OUTPUT_DIRECTORY src)
 set_target_properties(osclt-bin PROPERTIES OUTPUT_NAME osclt)
 
+if (${BUILD_STATIC} EQUAL ON)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static")
+    target_link_libraries(osclt-bin ${LIBEV} osclt-static)
+else()
+    target_link_libraries(osclt-bin ${LIBEV} osclt-shared)
+endif()
+
 add_subdirectory(bin)
-add_subdirectory(test)
+
+if (${BUILD_TEST} EQUAL ON)
+    enable_testing()
+    add_subdirectory(test)
+endif()
+
