@@ -3,8 +3,8 @@
 #include <argp.h>
 #include <string.h>
 #include <ev.h>
+
 #include "config.h"
-#include "schedule.h"
 
 const char *argp_program_version = "osclt v1.0";
 const char *argp_program_bug_address = "<imliuda@163.com>";
@@ -29,16 +29,14 @@ static error_t parse_option(int key, char *arg, struct argp_state *state) {
 static struct argp argp = {options, parse_option, argp_args, argp_doc};
 
 int main(int argc, char **argv) {
-    char *cname, *cparam;
+    char *config_file;
 
-    argp_parse(&argp, argc, argv, 0, 0, &cparam);
+    argp_parse(&argp, argc, argv, 0, 0, &config_file);
 
-    cname = strsep(&cparam, ":");
-    config_load(cparam);
-    schedule_load(&task_list);
+    struct config_error error;
+    config_load(config_file, &error);
 
     struct ev_loop *loop = ev_default_loop(0);
-    schedule_start(loop, task_list);
     ev_run(loop, 0);
     return 0;
 }

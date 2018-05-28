@@ -1,14 +1,4 @@
-src/osclt
 *.o
-config.*
-.deps
-.dirstamp
 Makefile
-Makefile.in
-aclocal.*
-autom4te.*
-compile
-configure
-depcomp
-install-sh
-missing
+.dirstamp
+.deps/

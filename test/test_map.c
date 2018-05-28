@@ -2,8 +2,8 @@
 #include <string.h>
 #include <time.h>
 
-#include "../src/map.h"
-#include "../src/list.h"
+#include "map.h"
+#include "list.h"
 
 int strkeycmp(void *key1, void *key2) {
     return strcmp((const char *)key1, (const char *)key2);
