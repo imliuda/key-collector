@@ -7,6 +7,7 @@
 #include <wchar.h>
 #include <iconv.h>
 #include <errno.h>
+#include <stdarg.h>
 
 #include "str.h"
 
