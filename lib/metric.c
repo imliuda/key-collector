@@ -38,20 +38,334 @@ static void metric_parse_error(struct metric_error *e, enum metric_error_code co
                                wchar_t wbuf, size_t offset, size_t len) {
 }
 
-static bool metric_parse_done(struct metric_parser *p) {
-    return p->offset == p->length;
-}
-
 static void metric_parse_destroy(struct list *ms) {
 }
 
 static char *metric_parse_name(struct metric_parser *p, struct metric_error *e) {
+    metric_skip_space(p);
+    if (p->offset == p->length)
+        return NULL;
+
+    size_t start = p->offset;
+    while (p->offset < p->length) {
+        if (p->buffer[p->offset] == '\n') {
+            return NULL;
+        } else if ((p->buffer[p->offset] == ' ' || p->buffer[p->offset] == ',') &&
+                    p->buffer[p->offset] != '\\') {
+            break;
+        }
+        p->offset++;
+    }
+    if (p->offset == start)
+        return NULL;
+    return strutf8nenc(p->buffer + start, p->offset - start);
 }
 
 static struct map *metric_parse_tags(struct metric_parser *p, struct metric_error *e) {
+    struct map *tags = map_new(keycmp);
+
+    if (p->buffer[p->offset] == ' ')
+        return tags;
+
+parse_kvs:
+    /* skip ',' sign */
+    p->offset++;
+
+    if (p->offset == p->length)
+        goto finish;
+
+    size_t start = p->offset;
+    while (p->offset < p->length) {
+        if (p->buffer[p->offset] == '\n') {
+            goto finish;
+        } else if ((p->buffer[p->offset] == ' ' || p->buffer[p->offset] == ',') &&
+                    p->buffer[p->offset - 1] != '\\') {
+            goto finish;
+        } else if (p->buffer[p->offset] == '=' && p->buffer[p->offset - 1] != '\\') {
+            break;
+        }
+        p->offset++;
+    }
+
+    if (p->offset == start)
+        goto finish;
+
+    char *name = strutf8nenc(p->buffer + start, p->offset - start);
+
+    if (p->offset == p->length) {
+        free(name);
+        return NULL;
+    }
+
+    /* skip '=' sign */
+    p->offset++;
+
+    start = p->offset;
+    while (p->offset < p->length) {
+        if (p->buffer[p->offset] == '\n') {
+            goto finish;
+        } else if (p->buffer[p->offset] == '=' && p->buffer[p->offset - 1] != '\\') {
+            goto finish;
+        } else if ((p->buffer[p->offset] == ' ' || p->buffer[p->offset] == ',') &&
+                    p->buffer[p->offset - 1] != '\\') {
+            break;
+        }
+        p->offset++;
+    }
+
+    if (p->offset == start) {
+        goto finish:
+    }
+
+    char *value = strutf8nenc(p->buffer + start, p->offset - start);
+
+    if (p->offset == p->length) {
+        free(name);
+        free(value);
+        goto finish;
+    }
+
+    map_add(tags, name, value);
+
+    if (p->buffer[p->offset] == ' ') {
+        return tags;
+    }
+
+    if (p->buffer[p->offset] == ',') {
+        goto parse_kvs;
+    }
+
+finish:
+    map_destroy(tags);
+    return NULL;
+}
+
+static struct metric_value *metric_parse_null_value(struct metric_parser *p) {
+    if ((p->offset <= p->length - 4) && (wmemcmp(p->buffer + p->offset, L"null", 4) == 0)) {
+        struct metric_value *value = malloc(struct metric_value);
+        value->type = METRIC_VALUE_NULL_TYPE;
+        value->value = NULL;
+        return value;
+    }
+    return NULL;
+}
+
+static struct metric_value *metric_parse_boolean_value(struct metric_parser *p) {
+    if ((p->offset <= p->length - 4) && (wmemcmp(p->buffer + p->offset, L"true", 4) == 0)) {
+        struct metric_value *value = malloc(struct metric_value);
+        value->type = METRIC_VALUE_BOOLEAN_TYPE;
+        value->value = malloc(sizeof(bool));
+        *(bool *)value->value = true;
+        return value;
+    } else if ((p->offset <= p->length - 5) && (wmemcmp(p->buffer + p->offset, L"false", 5) == 0)) {
+        struct metric_value *value = malloc(struct metric_value);
+        value->type = METRIC_VALUE_BOOLEAN_TYPE;
+        value->value = malloc(sizeof(bool));
+        *(bool *)value->value = false;
+        return value;
+    }
+    return NULL;
+}
+
+static struct metric_value *metric_parse_number_value(struct metric_parser *p) {
+    size_t offset = p->offset;
+    size_t start = p->offset;
+
+    wchar_t *wcs;
+    char *s;
+    size_t frac, exp;
+
+    metric_skip_space(p);
+    if (p->offset == p->length) {
+        p->offset = offset;
+        return NULL;
+    }
+
+    if (p->buffer[p->offset] == L'-' || p->buffer[p->offset] == L'+')
+        p->offset++;
+        if (p->offset == p->length) {
+            p->offset = offset;
+            return NULL;
+        }
+    }
+
+    if (p->buffer[p->offset] == L'0') { /* leading zero */
+        p->offset++;
+        if (p->offset == p->length || p->buffer[p->offset] == L'\n') {
+            return NULL;
+        } else if (p->buffer[p->offset] == L' ') {
+            struct metric_value *value = malloc(sizeof(struct metric_value));
+            value->type = METRIC_INTEGER_VALUE_TYPE;
+            value->value = malloc(sizeof(long long *));
+            *(long long *)value->value = 0;
+            return value;
+        } else if (p->buffer[p->offset] == L'.') { /* frac or exp */
+parse_real:
+                p->offset++;
+                if (p->offset == p->length) {
+                    p->offset = offset;
+                    return NULL;
+                }
+
+                frac = p->offset;
+                while (p->offset < p->length) {
+                    if (p->buffer[p->offset] == L'\n') {
+                        p->offset = offset;
+                        return NULL;
+                    } else if (p->buffer[p->offset] >= L'0' && p->buffer[p->offset] <= L'9') {
+                        p->offset++;
+                    } else if (p->buffer[p->offset] == L' ' || p->buffer[p->offset] == L'e' ||
+                               p->buffer[p->offset] == L'E') {
+                        break;
+                    } else {
+                        p->offset = offset;
+                        return NULL;
+                    }
+                }
+
+                if (p->offset == frac) { /* frac DIGIT not found, we got "x." */
+                    p->offset = offset;
+                    return NULL;
+                }
+
+                if (p->buffer[p->offset] == L' ') {
+                    goto return_real;
+                }
+
+                json_skip_ws(p);
+                if (json_parse_done(p) || p->buffer[p->offset] == 0x5d ||
+                    p->buffer[p->offset] == 0x7d || p->buffer[p->offset] == 0x2c) { /* got "x.xx" */
+                    goto return_real;
+                } else if (p->buffer[p->offset] == 0x65 || p->buffer[p->offset] == 0x45) { /* got "x.xxe" or "x.xxE" */
+                    p->offset++;
+                    if (json_parse_done(p)) {
+                        p->offset = offset;
+                        return NULL;
+                    }
+                    if (p->buffer[p->offset] == 0x2b || p->buffer[p->offset] == 0x2d) { /* got "x.xxE-" or "x.xxE+" */
+                        p->offset++;
+                    }
+                    exp = p->offset;
+                    while (!json_parse_done(p)) {
+                        if (p->buffer[p->offset] >= 0x30 && p->buffer[p->offset] <= 0x39) {
+                            p->offset++;
+                            end = p->offset;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (p->offset == exp) { /* exp DIGIT not found, got "x.xx(e|E)[+|-]" */
+                        p->offset = offset;
+                        return NULL;
+                    }
+
+                    json_skip_ws(p);
+                    if (json_parse_done(p) || p->buffer[p->offset] == 0x5d ||
+                        p->buffer[p->offset] == 0x7d || p->buffer[p->offset] == 0x2c) { /* got "x.xx(e|E)[+|-]xx" */
+                        goto return_real;
+                    } else {
+                        p->offset = offset;
+                        return NULL;
+                    }
+                }
+            } else {
+                json_skip_ws(p);
+                if (p->buffer[p->offset] == 0x5d || p->buffer[p->offset] == 0x7d ||
+                    p->buffer[p->offset] == 0x2c) { /* end at ']', '}', ',' */
+                    return json_integer(0);
+                } else {
+                    p->offset = offset;
+                    return NULL;
+                }
+            }
+        }
+    } else { /* decimal */
+        while (!json_parse_done(p)) {
+            if (p->buffer[p->offset] >= 0x30 && p->buffer[p->offset] <= 0x39) {
+                p->offset++;
+                end = p->offset;
+            } else if (p->buffer[p->offset] == 0x2e || p->buffer[p->offset] == 0x65 ||
+                       p->buffer[p->offset] == 0x45) { /* '.' or 'e' or 'E' */
+                goto parse_real;
+            } else {
+                break;
+            }
+        }
+        json_skip_ws(p);
+        if (json_parse_done(p) || p->buffer[p->offset] == 0x5d ||
+            p->buffer[p->offset] == 0x7d || p->buffer[p->offset] == 0x2c) {
+            wchar_t *wcs = wcsndup(p->buffer + start, end - start);
+            char *s = strutf8enc(wcs);
+            long long integer = strtoll(s, NULL, 10);
+            free(wcs);
+            free(s);
+            return json_integer(integer);
+        } else {
+            p->offset = offset;
+            return NULL;
+        }
+    }
+
+return_real:
+    wcs = wcsndup(p->buffer + start, end - start);
+    s = strutf8enc(wcs);
+    double real = atof(s);
+    free(wcs);
+    free(s);
+    return json_real(real);
+}
+
+static struct metric_value *metric_parse_string_value(struct metric_parser *p) {
+    size_t offset = p->offset;
+
+    /* qoutation mark */
+    if (p->buffer[p->offset] != L'"') {
+        return NULL;
+    }
+
+    /* skip '"' */
+    p->offset++;
+
+    size_t start = p->offset;
+    while (p->offset < p->length) {
+        if (p->buffer[p->offset] == L'\n') {
+            p->offset = offset;
+            return NULL;
+        } else if (p->buffer[p->offset] == L'"' && p->buffer[p->offset - 1] != L'\\') {
+            break;
+        }
+        p->offset++;
+    }
+
+    if (p->offset == p->length) {
+        p->offset = offset;
+        return NULL;
+    }
+
+    struct metric_value *value = malloc(sizeof(struct metric_value));
+    value->type = METRIC_STRING_VALUE_TYPE;
+    value->value = strutf8nenc(p->buffer + start, p->offset - start);
+    return value;
 }
 
 static struct metric_value *metric_parse_value(struct metric_parser *p, struct metric_error *e) {
+    metric_skip_space(p);
+    if (p->offset == p->length)
+        return NULL;
+
+    struct metric_value *value;
+
+    if (value = metric_parse_null_value(p)) {
+        return value;
+    } else if (value = metric_parse_boolean_value(p)) {
+        return value;
+    } else if (value = metric_parse_number_value(p)) {
+        return value;
+    } else if (value = metric_parse_string_value(p)) {
+        return value;
+    }
+
+    return NULL;
 }
 
 static bool metric_parse_time(struct metric_parser *p, struct metric_error *e, time_t *time) {
@@ -69,9 +383,10 @@ struct list *metric_parse(const char *buf, struct metric_error *e) {
     struct metric_value *value;
     time_t time;
 
+    struct metric *m;
     struct list *ms = list_new();
     
-    while (!metric_parse_done(&parser)) {
+    while (parser.offset < parser.length) {
         name = metric_parse_name(&parser, e);
         if (!name) {
             goto name_error;
@@ -87,21 +402,36 @@ struct list *metric_parse(const char *buf, struct metric_error *e) {
         if (!metric_parse_time(&parser, e, &time)) {
             goto time_error;
         }
+
+        metric_skip_space(&parser);
+        if ((parser.offset < parser.length) && (parser.buffer[parser.offset] != '\n')) {
+            goto time_error;
+        }
+
+        parser.offset++;
+
+        *m = metric_new();
+        m->name = name;
+        m->tags = tags;
+        m->value = value;
+        m->time = time;
+
+        list_append(ms, m);
     }
 
     return ms;
 
 time_error:
 value_error:
-//    struct list *p, *keys = map_keys(tags);
-//    void *orig_key, *orig_data;
-//    for(p = keys; p != NULL; p = list_next(p)) {
-//        map_remove(tags, list_data(p), &orig_key, &orig_data);
-//        free(orig_key);
-//        free(orig_data);
-//    }
-//    map_destroy(tags);
-//    list_destroy(keys);
+    struct list *p, *keys = map_keys(tags);
+    void *orig_key, *orig_data;
+    for(p = keys; p != NULL; p = list_next(p)) {
+        map_remove(tags, list_data(p), &orig_key, &orig_data);
+        free(orig_key);
+        free(orig_data);
+    }
+    map_destroy(tags);
+    list_destroy(keys);
 
 tags_error:
     free(name);
